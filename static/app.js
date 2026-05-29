@@ -26,6 +26,33 @@ document.addEventListener("DOMContentLoaded", () => {
   loadConfigurations();
   initAutocompletes();
 
+  // Mobile Menu / Sidebar Handlers
+  const mobileToggle = document.getElementById("mobile-menu-toggle");
+  const mobileClose = document.getElementById("mobile-menu-close");
+  const sidebarNav = document.getElementById("sidebar-nav");
+  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+
+  if (mobileToggle && sidebarNav && sidebarBackdrop) {
+    mobileToggle.addEventListener("click", () => {
+      sidebarNav.classList.add("open");
+      sidebarBackdrop.classList.add("active");
+    });
+  }
+
+  if (mobileClose && sidebarNav && sidebarBackdrop) {
+    mobileClose.addEventListener("click", () => {
+      sidebarNav.classList.remove("open");
+      sidebarBackdrop.classList.remove("active");
+    });
+  }
+
+  if (sidebarBackdrop && sidebarNav) {
+    sidebarBackdrop.addEventListener("click", () => {
+      sidebarNav.classList.remove("open");
+      sidebarBackdrop.classList.remove("active");
+    });
+  }
+
   // Save Config Button
   document.getElementById("save-config-btn").addEventListener("click", saveConfigurations);
 
@@ -161,6 +188,16 @@ function switchTab(target) {
     loadJobs();
   } else if (target === "resume-hub") {
     loadHubFiles();
+  }
+
+  // Close mobile sidebar on navigation
+  const sidebarNav = document.getElementById("sidebar-nav");
+  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+  if (sidebarNav) {
+    sidebarNav.classList.remove("open");
+  }
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.remove("active");
   }
 
   // Save active tab state

@@ -15,16 +15,20 @@
   <!-- Toast Notification System -->
   <div id="toast-container" class="toast-container"></div>
 
+  <!-- Sidebar Backdrop Overlay for Mobile -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
   <div class="glass-container">
     
     <!-- Sidebar Navigation -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar-nav">
       <div class="logo">
         <div class="logo-icon"></div>
         <div class="logo-text">
           <h2>Aegis Flow</h2>
           <span>AI Application Client</span>
         </div>
+        <button id="mobile-menu-close" class="mobile-menu-close-btn" title="Close Menu">&times;</button>
       </div>
       <nav class="nav-menu">
         <button class="nav-item active" data-tab="dashboard">
@@ -62,6 +66,11 @@
       
       <!-- Top Bar Header -->
       <header class="top-bar">
+        <button id="mobile-menu-toggle" class="mobile-menu-btn" title="Open Menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
         <div class="header-info">
           <h1 id="page-title">Control Center</h1>
           <p id="page-desc">Setup your job criteria, configure credentials, and run automated application simulations.</p>

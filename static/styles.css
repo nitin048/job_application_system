@@ -1553,3 +1553,325 @@ body {
 #hub-files-table-body td strong {
   color: var(--text-primary);
 }
+
+/* ============================================================
+   Mobile Toggle and Menu Buttons (Default: hidden on desktop)
+   ============================================================ */
+.mobile-menu-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 24px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  z-index: 10;
+}
+
+.mobile-menu-btn span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text-primary);
+  border-radius: 2px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-menu-close-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 28px;
+  cursor: pointer;
+  padding: 0 8px;
+  line-height: 1;
+  outline: none;
+  transition: color 0.2s ease;
+}
+
+.mobile-menu-close-btn:hover {
+  color: var(--color-danger);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 9, 11, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ============================================================
+   Responsive Layout Media Queries
+   ============================================================ */
+
+/* 1. Tablet and Mobile Viewports (< 992px) */
+@media screen and (max-width: 991.98px) {
+  body {
+    overflow: auto;
+    height: auto;
+    min-height: 100vh;
+    padding: 0;
+    align-items: flex-start;
+  }
+
+  .glass-container {
+    grid-template-columns: 1fr;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  /* Slide-out offscreen Sidebar Menu */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+    border-right: 1px solid var(--border-light);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 20px 0 50px rgba(0, 0, 0, 0.8);
+  }
+
+  /* Sidebar header logo spacing & close button */
+  .logo {
+    justify-content: space-between;
+    padding-left: 0;
+  }
+
+  .mobile-menu-close-btn {
+    display: block;
+  }
+
+  /* Main header adjustments */
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  .top-bar {
+    padding: 16px 20px;
+    gap: 16px;
+  }
+
+  .top-bar .header-info {
+    flex-grow: 1;
+  }
+
+  #page-title {
+    font-size: 20px;
+  }
+
+  #page-desc {
+    font-size: 12px;
+  }
+
+  /* Layout panels & padding */
+  .content-body {
+    padding: 20px;
+  }
+
+  /* Component layout adjustments */
+  .onboarding-roadmap {
+    padding: 12px 20px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  /* 3-Column Control Center Panel layout collapse */
+  .dashboard-split-three {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: 16px;
+  }
+
+  /* Ensure cards in vertical stack have appropriate scroll heights */
+  .dashboard-split-three .card {
+    height: auto;
+  }
+
+  .form-sandbox {
+    height: 320px;
+  }
+
+  .console-card {
+    height: 350px;
+  }
+
+  .terminal-body {
+    height: 100%;
+  }
+
+  /* 2-Column Resume Hub layout collapse */
+  .dashboard-split {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Modals */
+  .compare-modal-content {
+    width: 95vw;
+    height: 90vh;
+  }
+}
+
+/* 2. Mobile Viewports (< 768px) */
+@media screen and (max-width: 767.98px) {
+  .top-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .top-bar .header-actions {
+    width: 100%;
+    margin-top: 4px;
+    border-top: 1px solid var(--border-light);
+    padding-top: 12px;
+  }
+
+  .top-bar .header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Onboarding roadmap horizontal scroll */
+  .onboarding-roadmap {
+    overflow-x: auto;
+    white-space: nowrap;
+    justify-content: flex-start;
+    gap: 16px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .onboarding-roadmap::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+
+  .roadmap-step {
+    flex-shrink: 0;
+  }
+
+  .roadmap-divider {
+    display: none;
+  }
+
+  /* Grid Layouts */
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .form-group.full-width {
+    grid-column: span 1;
+  }
+
+  /* Jobs listings filter bar wrap rules */
+  #jobs-filter-bar > div {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+
+  #jobs-filter-bar input {
+    width: 100%;
+  }
+
+  #jobs-filter-bar select {
+    width: 100%;
+  }
+
+  #jobs-filter-bar label {
+    min-width: 80px;
+  }
+
+  #jobs-filter-bar button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Job item card column wrapping */
+  .job-card {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .job-action-block {
+    align-items: flex-start;
+    min-width: 0;
+    width: 100%;
+    border-top: 1px solid var(--border-light);
+    padding-top: 16px;
+    gap: 12px;
+  }
+
+  .job-score-badge {
+    text-align: left;
+  }
+
+  .job-action-block button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Modals differences */
+  .compare-columns-header {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 12px 16px;
+  }
+
+  .compare-diff-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .compare-modal-header {
+    padding: 16px;
+  }
+
+  .compare-content-scroll {
+    padding: 16px;
+  }
+
+  .compare-box {
+    padding: 12px;
+    font-size: 12.5px;
+  }
+}
+
