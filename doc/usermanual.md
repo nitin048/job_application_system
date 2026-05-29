@@ -7,6 +7,13 @@ Welcome to the user manual for the **Autonomous Multi-Platform AI Job Applicatio
 ## 📖 Table of Contents
 1. [System Overview & Target Audience](#1-system-overview--target-audience)
 2. [Functional Subsystems: How They Work](#2-functional-subsystems-how-they-work)
+   * [A. Job Ingestion & Web Crawler](#a-job-ingestion--web-crawler-srcjob_crawlerpy)
+   * [B. Compatibility Scoring Engine](#b-compatibility-scoring-engine-srcscoringpy)
+   * [C. AI Resume Customizer](#c-ai-resume-customizer-srcresume_tweakerpy)
+   * [D. Cryptographic Hash Buster](#d-cryptographic-hash-buster-srcdocument_generatorpy)
+   * [E. Stateful Form Filling](#e-stateful-form-filling-srcform_graphpy)
+   * [F. Playwright Evasion Driver](#f-playwright-evasion-driver-srcbrowser_driverpy--srcnaukri_runnerpy)
+   * [G. Google Drive Sync](#g-google-drive-sync-srcgdrive_managerpy)
 3. [User Interface & Dashboard Tabs](#3-user-interface--dashboard-tabs)
 4. [System Outputs: What the System Generates](#4-system-outputs-what-the-system-generates)
 5. [Step-by-Step Operations Walkthrough](#5-step-by-step-operations-walkthrough)
@@ -35,6 +42,25 @@ The job crawler discovers active job openings based on your preferences.
 5. **Apply Type Detection**: It inspects interactive elements (buttons, links, forms) to detect whether the job is an **Easy Apply** (can be applied to directly on Naukri) or requires **Manual Intervention** (redirects to an external company careers page).
 6. **Fallback Registry**: If the crawler is blocked by rate-limiting or is run without an active internet connection, it automatically loads a preconfigured registry of mock developer roles at companies like Google, Stripe, and Meta to allow offline testing.
 
+#### 📊 Crawler Dataflow Visualized:
+```mermaid
+graph TD
+    A[Start Scan Request] --> B[Read config/searches.yaml]
+    B --> C[Launch Parallel Scraper Workers]
+    C -->|Thread 1: Software Engineer| D[Scrape Naukri Search Page]
+    C -->|Thread 2: Full Stack Developer| E[Scrape Naukri Search Page]
+    D & E --> F{URL in data/discovered_jobs.json?}
+    F -->|Yes: Duplicate| G[Skip Page Load]
+    F -->|No: New Job| H[Scrape Full Job Description]
+    H --> I[Detect Application Route]
+    I -->|Direct Easy Apply Option| J[Set apply_type = 'Easy Apply']
+    I -->|Redirect / Company Site| K[Set apply_type = 'Manual Intervention']
+    J & K --> L[Pass to Scoring Engine]
+    L --> M[Save to Discovered Listings Table]
+```
+
+---
+
 ### B. Compatibility Scoring Engine (`src/scoring.py`)
 Every discovered job is scored out of **5.0** (scaled to a percentage) to assess how well your background matches the posting.
 1. **Disqualification Checks**: The engine immediately reviews the company name and job title against `blacklist_companies` and `blacklist_titles` configured in `searches.yaml`. If there is a match, the score is forced to `0.0` and the job is excluded.
@@ -46,28 +72,84 @@ Every discovered job is scored out of **5.0** (scaled to a percentage) to assess
    * **Workplace Type Match (15% weight)**: Evaluates Remote, Hybrid, or On-site parameters.
    * **Seniority Match (15% weight)**: Compares required years of experience vs. candidate experience.
 
+#### 📊 Score Weight Distribution:
+```mermaid
+pie title Compatibility Evaluation Metric Weights
+    "Title Match" : 25
+    "Tech Stack Match" : 25
+    "Location Match" : 20
+    "Workplace Type Match" : 15
+    "Seniority Match" : 15
+```
+
+---
+
 ### C. AI Resume Customizer (`src/resume_tweaker.py`)
 To maximize interview rates, this subsystem tailors a candidate's resume to match a specific job description.
 1. **Gemini Integration**: Sends the candidate's base resume and the target job description to the Google Gemini API. It instructs the model to organically integrate key technologies, methodologies, and bullet points to hit an **85%+ ATS match score** while retaining actual names, dates, and locations.
 2. **0.1s Local Heuristic Fallback**: If the Gemini API key is missing or quota limits are exceeded (HTTP 429), a local keyword injection engine executes in less than 0.1 seconds. It maps the skills in the job description to the resume sections (summary, skills list, experience bullets) automatically.
 3. **ReportLab PDF Rendering**: Generates a single-column, clean, highly readable, ATS-compliant PDF using ReportLab flowables.
 
-### D. Cryptographic Hash Buster (`src/document_generator.py`)
+#### 📊 AI Optimization Loop:
+```mermaid
+flowchart TD
+    A[Start Resume Customization] --> B{Gemini API Key Available?}
+    B -->|Yes| C[Call Gemini API optimization]
+    B -->|No/Rate Limited| D[Trigger 0.1s Local Heuristic Fallback]
+    D --> E[Inject Skills & Keywords via Regex]
+    C --> F{Successfully parsed JSON?}
+    F -->|Yes| G[Set Tailored JSON data]
+    F -->|No| D
+    G & E --> H[Render PDF via ReportLab Flowables]
+    H --> I[Send to Cryptographic Hash Buster]
+```
+
+---
+
+## D. Cryptographic Hash Buster (`src/document_generator.py`)
 Job boards use file hashing algorithms to flag duplicate resume uploads.
 * **How it works**: The system appends randomized white characters and metadata nodes (`/ModifierID`, `/Keywords`) to the PDF binary layout.
 * **Result**: The visual document remains identical to the recruiter, but the cryptographic file signature (MD5/SHA-256 hash) changes completely on every generation. This forces Naukri to process the resume as a new document, updating the candidate's visibility timestamp on recruiters' search feeds.
 
+#### 📊 Hash Alteration Concept:
+```mermaid
+gantt
+    title File Hash Modification Lifecycle
+    dateFormat  X
+    axisFormat %s
+    section Original PDF Binary
+    Pristine Content Schema       :active, 0, 10
+    Cryptographic MD5 Signature (abc123xyz) :crit, 10, 12
+    section Modified PDF Binary
+    Pristine Content Schema       :active, 0, 10
+    Appended Hidden Metadata tags (/ModifierID) :done, 10, 11
+    New Cryptographic MD5 Signature (987qwe456) :crit, 11, 13
+```
+
+---
+
 ### E. Stateful Form Filling (`src/form_graph.py`)
 For external application forms, this sub-system automates input entries.
 1. **State Node Workflow**:
-   ```
-   [Initialize] ➔ [Extract] ➔ [Generate] ➔ [Assemble]
-   ```
    * **Initialize**: Validates the webpage address.
    * **Extract**: Iterates through elements (`input`, `select`, `textarea`, `file`) and associates them with labels, placeholders, or aria descriptions.
    * **Generate**: Maps candidate data (names, demographics, notices, salary expectations) to corresponding inputs.
    * **Assemble**: Populates values, uploads the tailored resume PDF, generates page screenshots, and prepares for submission.
 2. **Interactive Form Actions**: Fills inputs, selects drop-down items, and checks boxes automatically.
+
+#### 📊 Form Graph State Transitions:
+```mermaid
+stateDiagram-v2
+    [*] --> Initialize : Load Page URL
+    Initialize --> Extract : URL validation success
+    Initialize --> [*] : Error: Invalid protocol
+    Extract --> Generate : Scrape HTML input elements & labels
+    Generate --> Assemble : Map candidate profile variables to fields
+    Assemble --> Submit : Populate on-screen forms & upload files
+    Submit --> [*] : Screenshot & Click Submit
+```
+
+---
 
 ### F. Playwright Evasion Driver (`src/browser_driver.py` & `src/naukri_runner.py`)
 Handles web automation actions safely.
@@ -76,8 +158,44 @@ Handles web automation actions safely.
 3. **Session Preservation**: Saves cookies, tokens, and storage state to `data/session_state.json` on exit. This bypasses login challenges and OTP/SMS inputs on subsequent runs.
 4. **Easy Apply Chatbot Navigation**: Evaluates multi-step chatbot apply drawers on Naukri, answers questions (defaults to "Yes/Agree" for checkboxes and inputs credentials like notice periods), and clicks submit.
 
+#### 📊 Automation Security Evasions:
+```mermaid
+graph TD
+    A[Launch Playwright Browser] --> B[Inject Stealth Init Script]
+    B -->|Evade Bot Detectors| C[Set navigator.webdriver = undefined]
+    B -->|Mimic Chrome user| D[Mock navigator.plugins & languages]
+    A --> E{data/session_state.json exists?}
+    E -->|Yes| F[Restore authenticated cookies & storage state]
+    E -->|No| G[Perform standard username/password login]
+    F & G --> H[Open Target Job Board Link]
+```
+
+---
+
 ### G. Google Drive Sync (`src/gdrive_manager.py`)
 If enabled, uploads tailored resumes directly to Google Drive. Once uploaded, the local copy is deleted to maintain a clean local workspace. When applying, the system retrieves the file from Google Drive on-the-fly.
+
+#### 📊 Google Drive File Sync Flow:
+```mermaid
+sequenceDiagram
+    participant Tweaker as ResumeTweaker
+    participant GDrive as GoogleDriveManager
+    participant Disk as Local Storage Vault
+    participant Form as Playwright Form Submitter
+
+    Tweaker->>Disk: Render tailored resume PDF
+    Note over Disk: File generated locally
+    GDrive->>Disk: Fetch local PDF
+    GDrive->>GDrive: Upload to Google Drive Folder
+    GDrive->>Disk: Delete local PDF copy
+    Note over Disk: Clean local environment
+    
+    Note over Form: Application triggered
+    Form->>GDrive: Request PDF via file_id
+    GDrive->>Form: Download to temporary folder
+    Form->>Form: Upload file to form input
+    Form->>Form: Clean up temporary folder
+```
 
 ---
 
