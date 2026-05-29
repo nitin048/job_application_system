@@ -1765,18 +1765,6 @@ body {
     gap: 12px;
   }
 
-  .top-bar .header-actions {
-    width: 100%;
-    margin-top: 4px;
-    border-top: 1px solid var(--border-light);
-    padding-top: 12px;
-  }
-
-  .top-bar .header-actions .btn {
-    width: 100%;
-    justify-content: center;
-  }
-
   /* Onboarding roadmap horizontal scroll */
   .onboarding-roadmap {
     overflow-x: auto;

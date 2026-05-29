@@ -60,6 +60,10 @@
         </button>
       </nav>
       <div class="sidebar-footer transition-all duration-300 group-[.collapsed]/sidebar:px-0">
+        <button id="save-config-btn" class="btn btn-primary btn-glow w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg group-[.collapsed]/sidebar:w-10 group-[.collapsed]/sidebar:h-10 group-[.collapsed]/sidebar:p-0 group-[.collapsed]/sidebar:rounded-full group-[.collapsed]/sidebar:mx-auto mb-4" title="Save Settings">
+          <span class="btn-icon">💾</span>
+          <span class="save-btn-text group-[.collapsed]/sidebar:hidden">Save Settings</span>
+        </button>
         <div class="status-indicator flex items-center gap-2 group-[.collapsed]/sidebar:justify-center">
           <span class="status-dot online"></span>
           <span id="engine-status-text" class="group-[.collapsed]/sidebar:hidden">Server Connected</span>
@@ -81,11 +85,7 @@
           <h1 id="page-title">Control Center</h1>
           <p id="page-desc">Setup your job criteria, configure credentials, and run automated application simulations.</p>
         </div>
-        <div class="header-actions">
-          <button id="save-config-btn" class="btn btn-primary btn-glow">
-            <span class="btn-icon">💾</span> Save Settings
-          </button>
-        </div>
+
       </header>
 
       <!-- Guided Progress Roadmap -->
