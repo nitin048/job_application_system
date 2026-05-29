@@ -5,12 +5,12 @@ from src.crypto_manager import decrypt_value
 RESUME_PATH = os.getenv("RESUME_PATH", r"/Users/nitinpradhan/.gemini/antigravity/scratch/job_application_system/assets/Resume (1).pdf")
 MODIFIED_RESUME_PATH = os.getenv("MODIFIED_RESUME_PATH", r"/Users/nitinpradhan/.gemini/antigravity/scratch/job_application_system/data/Modified_Resume.pdf")
 USERNAME = os.getenv("NAUKRI_USERNAME", "nitinpradhan48@gmail.com")
-PASSWORD = decrypt_value(os.getenv("NAUKRI_PASSWORD", "ENC::gAAAAABqGY7wlM_FoOdEIbzv-myAK-EHyCAPnSeAGJaG55JDaZr9NL73cyIrgMP_3pNogGmtutaPrYQnB7okm_E83fyto_xuBg=="))
+PASSWORD = decrypt_value(os.getenv("NAUKRI_PASSWORD", "ENC::gAAAAABqGdJWsudKLldQnXBs6PZP_QLLOr8mRAgXhQYpWn-Biw3Ku7j_co_4FM5iwdUDQjyZcemACowXFqf_rqHrlL4kgYbAEjZIMNOw38fG7SFijhdm76ue2ujTepwfHemJOjhObwwc"))
 MOBILE = os.getenv("NAUKRI_MOBILE", "+917795275103")
 UPDATE_PDF_HASH = True
 
 # LLM API Config
-GEMINI_API_KEY = decrypt_value(os.getenv("GEMINI_API_KEY", "ENC::gAAAAABqGY7wouiy7KEAYuL2Eb0Xb-o6abQgdLuB_FD6ZUZVLyFOgFl9k_fqIPvZBNtQnkR1o9fC9a10sOsBa0d9_sWQpdZPPqw-fkoeUsG1m4YirjJ7gIh2jQCdIeqH6uv8l7cHgZHK"))
+GEMINI_API_KEY = decrypt_value(os.getenv("GEMINI_API_KEY", "ENC::gAAAAABqGdJWkh7bMVc8N6-Ww_yI0N0E3lHUhRH63jmG9rjNzq8qHaMuK_GEBM340EW_SBi-RAKyQMzrZs2ZLW5eF9N0OXhFZSTr9XZf5wY-eBZfLm-OHI8hjcCqEsoemyV5qGO8vRmZ"))
 SOLVER_API_KEY = decrypt_value(os.getenv("SOLVER_API_KEY", ""))
 
 # Browser settings
