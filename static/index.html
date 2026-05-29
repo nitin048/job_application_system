@@ -60,10 +60,6 @@
         </button>
       </nav>
       <div class="sidebar-footer transition-all duration-300 group-[.collapsed]/sidebar:px-0">
-        <button id="save-config-btn" class="btn btn-primary btn-glow w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg group-[.collapsed]/sidebar:w-10 group-[.collapsed]/sidebar:h-10 group-[.collapsed]/sidebar:p-0 group-[.collapsed]/sidebar:rounded-full group-[.collapsed]/sidebar:mx-auto mb-4" title="Save Settings">
-          <span class="btn-icon">💾</span>
-          <span class="save-btn-text group-[.collapsed]/sidebar:hidden">Save Settings</span>
-        </button>
         <div class="status-indicator flex items-center gap-2 group-[.collapsed]/sidebar:justify-center">
           <span class="status-dot online"></span>
           <span id="engine-status-text" class="group-[.collapsed]/sidebar:hidden">Server Connected</span>
@@ -72,7 +68,7 @@
     </aside>
 
     <!-- Main Content Area -->
-    <main class="main-content">
+    <main class="main-content relative">
       
       <!-- Top Bar Header -->
       <header class="top-bar">
@@ -799,6 +795,12 @@
         </section>
  
        </div>
+
+       <!-- Floating Save Settings Button (Bottom Right) -->
+       <button id="save-config-btn" class="btn btn-primary btn-glow absolute bottom-6 right-8 z-[99] flex items-center gap-2 px-5 py-3 rounded-full shadow-lg shadow-black/40 hover:scale-105 transition-all duration-200" title="Save Settings">
+         <span class="btn-icon">💾</span>
+         <span class="save-btn-text">Save Settings</span>
+       </button>
      </main>
 
   <!-- Resume Comparison Modal -->
