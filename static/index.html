@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -21,42 +22,46 @@
   <div class="glass-container">
     
     <!-- Sidebar Navigation -->
-    <aside class="sidebar" id="sidebar-nav">
+    <aside class="sidebar group/sidebar transition-all duration-300 [&.collapsed]:w-[70px] [&.collapsed]:px-3 overflow-hidden flex flex-col" id="sidebar-nav">
       <div class="logo">
-        <div class="logo-icon"></div>
-        <div class="logo-text">
+        <div class="logo-icon flex-shrink-0"></div>
+        <div class="logo-text group-[.collapsed]/sidebar:hidden">
           <h2>Aegis Flow</h2>
           <span>AI Application Client</span>
         </div>
+        <!-- Desktop Collapse Button -->
+        <button id="sidebar-collapse-btn" class="hidden min-[992px]:flex items-center justify-center w-6 h-6 rounded-md hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer ml-auto collapse-arrow-btn" title="Toggle Sidebar">
+          <span class="collapse-arrow-icon text-[10px]">◀</span>
+        </button>
         <button id="mobile-menu-close" class="mobile-menu-close-btn" title="Close Menu">&times;</button>
       </div>
       <nav class="nav-menu">
-        <button class="nav-item active" data-tab="dashboard">
-          <span class="icon">📊</span> Control Center
+        <button class="nav-item active group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="dashboard">
+          <span class="icon">📊</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">Control Center</span>
         </button>
-        <button class="nav-item" data-tab="jobs">
-          <span class="icon">💼</span> Discovered Jobs
+        <button class="nav-item group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="jobs">
+          <span class="icon">💼</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">Discovered Jobs</span>
         </button>
-        <button class="nav-item" data-tab="resume-hub">
-          <span class="icon">📄</span> Resume Hub
+        <button class="nav-item group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="resume-hub">
+          <span class="icon">📄</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">Resume Hub</span>
         </button>
-        <button class="nav-item" data-tab="search">
-          <span class="icon">🔍</span> 1. Search Filters
+        <button class="nav-item group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="search">
+          <span class="icon">🔍</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">1. Search Filters</span>
         </button>
-        <button class="nav-item" data-tab="identity">
-          <span class="icon">👤</span> 2. Profile Details
+        <button class="nav-item group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="identity">
+          <span class="icon">👤</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">2. Profile Details</span>
         </button>
-        <button class="nav-item" data-tab="compliance">
-          <span class="icon">⚖️</span> 3. Legal & EEO
+        <button class="nav-item group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="compliance">
+          <span class="icon">⚖️</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">3. Legal & EEO</span>
         </button>
-        <button class="nav-item" data-tab="credentials">
-          <span class="icon">🔑</span> 4. Secrets & Keys
+        <button class="nav-item group-[.collapsed]/sidebar:justify-center group-[.collapsed]/sidebar:px-2 group-[.collapsed]/sidebar:gap-0 transition-all duration-200" data-tab="credentials">
+          <span class="icon">🔑</span> <span class="nav-text group-[.collapsed]/sidebar:hidden">4. Secrets & Keys</span>
         </button>
       </nav>
-      <div class="sidebar-footer">
-        <div class="status-indicator">
+      <div class="sidebar-footer transition-all duration-300 group-[.collapsed]/sidebar:px-0">
+        <div class="status-indicator flex items-center gap-2 group-[.collapsed]/sidebar:justify-center">
           <span class="status-dot online"></span>
-          <span id="engine-status-text">Server Connected</span>
+          <span id="engine-status-text" class="group-[.collapsed]/sidebar:hidden">Server Connected</span>
         </div>
       </div>
     </aside>

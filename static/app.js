@@ -53,6 +53,31 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Desktop Collapse Sidebar Handler
+  const collapseBtn = document.getElementById("sidebar-collapse-btn");
+  const glassContainer = document.querySelector(".glass-container");
+  const arrowIcon = collapseBtn ? collapseBtn.querySelector(".collapse-arrow-icon") : null;
+
+  if (collapseBtn && sidebarNav && glassContainer) {
+    collapseBtn.addEventListener("click", () => {
+      const isCollapsed = sidebarNav.classList.toggle("collapsed");
+      glassContainer.classList.toggle("sidebar-collapsed", isCollapsed);
+      localStorage.setItem("sidebar-collapsed", isCollapsed ? "true" : "false");
+      if (arrowIcon) {
+        arrowIcon.textContent = isCollapsed ? "▶" : "◀";
+      }
+    });
+
+    // Restore state from localStorage
+    if (localStorage.getItem("sidebar-collapsed") === "true") {
+      sidebarNav.classList.add("collapsed");
+      glassContainer.classList.add("sidebar-collapsed");
+      if (arrowIcon) {
+        arrowIcon.textContent = "▶";
+      }
+    }
+  }
+
   // Save Config Button
   document.getElementById("save-config-btn").addEventListener("click", saveConfigurations);
 
