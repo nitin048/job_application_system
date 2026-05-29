@@ -98,6 +98,25 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("prev-page-btn").addEventListener("click", () => handlePaginationClick(-1));
   document.getElementById("next-page-btn").addEventListener("click", () => handlePaginationClick(1));
 
+  // Copy Terminal Logs Button
+  const copyTerminalBtn = document.getElementById("copy-terminal-btn");
+  if (copyTerminalBtn) {
+    copyTerminalBtn.addEventListener("click", () => {
+      const terminalBody = document.getElementById("terminal-body");
+      if (terminalBody) {
+        const text = terminalBody.innerText;
+        navigator.clipboard.writeText(text)
+          .then(() => {
+            showToast("Terminal logs copied to clipboard.", "success");
+          })
+          .catch(err => {
+            console.error("Failed to copy terminal logs:", err);
+            showToast("Failed to copy logs.", "error");
+          });
+      }
+    });
+  }
+
   // Clear Terminal Button
   document.getElementById("clear-terminal-btn").addEventListener("click", () => {
     document.getElementById("terminal-body").innerHTML = '<div class="terminal-line system">Terminal cleared.</div>';

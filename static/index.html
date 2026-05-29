@@ -220,7 +220,10 @@
                   <span class="dot green"></span>
                 </div>
                 <span class="terminal-title">Output Terminal</span>
-                <button id="clear-terminal-btn" class="terminal-clear">Clear</button>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button id="copy-terminal-btn" class="terminal-clear" title="Copy Terminal Logs">Copy</button>
+                  <button id="clear-terminal-btn" class="terminal-clear">Clear</button>
+                </div>
               </div>
               <div id="terminal-body" class="terminal-body">
                 <div class="terminal-line system">Waiting for process start...</div>
