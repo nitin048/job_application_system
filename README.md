@@ -6,6 +6,7 @@ An autonomous, end-to-end job board search, ingestion, compatibility scoring, an
 
 ## 📖 Table of Contents
 * 📘 **[Complete User Manual](file:///Users/nitinpradhan/Learning/job_application_system/doc/usermanual.md)**
+* 🚀 **[Render Deployment Guide](file:///Users/nitinpradhan/Learning/job_application_system/doc/deployment.md)**
 1. [Core Features](#-core-features)
 2. [Subsystem Architecture & Components](#-subsystem-architecture--components)
 3. [FastAPI REST API Reference](#-fastapi-rest-api-reference)
