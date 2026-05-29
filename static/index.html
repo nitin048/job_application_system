@@ -22,17 +22,18 @@
   <div class="glass-container">
     
     <!-- Sidebar Navigation -->
-    <aside class="sidebar group/sidebar transition-all duration-300 [&.collapsed]:w-[70px] [&.collapsed]:px-3 overflow-hidden flex flex-col" id="sidebar-nav">
+    <aside class="sidebar group/sidebar relative transition-all duration-300 [&.collapsed]:w-[70px] [&.collapsed]:px-3 flex flex-col" id="sidebar-nav">
+      <!-- Desktop Collapse Button (Floats at vertical center on the right border) -->
+      <button id="sidebar-collapse-btn" class="hidden min-[992px]:flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-white/10 text-zinc-400 hover:text-white transition-all duration-200 cursor-pointer absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 z-[1001] shadow-lg hover:scale-105" title="Toggle Sidebar">
+        <span class="collapse-arrow-icon text-[12px] font-bold">◀</span>
+      </button>
+
       <div class="logo">
         <div class="logo-icon flex-shrink-0"></div>
         <div class="logo-text group-[.collapsed]/sidebar:hidden">
           <h2>Aegis Flow</h2>
           <span>AI Application Client</span>
         </div>
-        <!-- Desktop Collapse Button -->
-        <button id="sidebar-collapse-btn" class="hidden min-[992px]:flex items-center justify-center w-6 h-6 rounded-md hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer ml-auto collapse-arrow-btn" title="Toggle Sidebar">
-          <span class="collapse-arrow-icon text-[10px]">◀</span>
-        </button>
         <button id="mobile-menu-close" class="mobile-menu-close-btn" title="Close Menu">&times;</button>
       </div>
       <nav class="nav-menu">

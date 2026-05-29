@@ -69,6 +69,8 @@ body {
 
 /* Sidebar Styling */
 .sidebar {
+  position: relative;
+  overflow: visible;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-light);
   display: flex;
