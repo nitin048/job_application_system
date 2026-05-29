@@ -337,6 +337,9 @@ def get_scan_status():
         "count": len(jobs_cache)
     }
 
+class JobTailoringRequest(BaseModel):
+    resume_data: Optional[Dict[str, Any]] = None
+
 @app.post("/api/jobs/{job_id}/tailor")
 def tailor_job_resume(job_id: str, payload: Optional[JobTailoringRequest] = None):
     """
@@ -1293,8 +1296,7 @@ from src.resume_hub import (
     send_resume_via_email
 )
 
-class JobTailoringRequest(BaseModel):
-    resume_data: Optional[Dict[str, Any]] = None
+
 
 class JobCrawlRequest(BaseModel):
     job_url: str
