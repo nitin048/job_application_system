@@ -225,6 +225,17 @@ function switchTab(target) {
     sidebarBackdrop.classList.remove("active");
   }
 
+  // Show/Hide bottom Save Settings bar based on tab type
+  const saveBar = document.getElementById("save-settings-bar");
+  if (saveBar) {
+    const mandatoryTabs = ["search", "identity", "compliance", "credentials"];
+    if (mandatoryTabs.includes(target)) {
+      saveBar.style.display = "flex";
+    } else {
+      saveBar.style.display = "none";
+    }
+  }
+
   // Save active tab state
   saveAppState();
 }
@@ -2914,6 +2925,17 @@ window.loadAppState = function() {
         loadJobs();
       } else if (savedTab === "resume-hub") {
         loadHubFiles();
+      }
+
+      // Show/Hide bottom Save Settings bar based on tab type
+      const saveBar = document.getElementById("save-settings-bar");
+      if (saveBar) {
+        const mandatoryTabs = ["search", "identity", "compliance", "credentials"];
+        if (mandatoryTabs.includes(savedTab)) {
+          saveBar.style.display = "flex";
+        } else {
+          saveBar.style.display = "none";
+        }
       }
     }
   } catch (err) {
