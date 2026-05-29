@@ -46,7 +46,6 @@ env/
 
 # Package Managers
 .uv_cache/
-uv.lock
 
 # OS Metadata
 .DS_Store
