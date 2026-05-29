@@ -1,0 +1,95 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Pytest / unit tests
+.pytest_cache/
+.pytest_cache/
+.coverage
+.cache
+htmlcov/
+tox/
+.tox/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+/bin/
+/include/
+/lib/
+
+# Package Managers
+.uv_cache/
+uv.lock
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Sensitive Application Data & Secrets (MUST NOT BE COMMITTED)
+data/.secret.key
+data/token.json
+data/session_state.json
+data/discovered_jobs.json
+data/screenshots/
+data/*.pdf
+data/*.json
+
+# Google OAuth Credentials & dotfiles
+config/credentials.json
+config/*.json
+.env
+*.env
+.env.*
+secrets.yaml
+*secrets*.yaml
+
+# Private keys / Certificates / Passwords
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+
+# Exclude generated tailored resumes and vault assets
+assets/**/*.pdf
+assets/**/*.json
+assets/resume_hub/
+assets/target_employer_resume/
+assets/*_resume/
+
+# Temporary / scratch files
+scratch/reconstructed_*
+scratch/inspect_*
+scratch/check_*
+scratch/clean_*

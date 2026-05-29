@@ -1,0 +1,31 @@
+[project]
+name = "job-application-system"
+version = "0.1.0"
+description = "Autonomous Multi-Platform AI Job Application System"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0.1",
+    "pydantic>=2.6.4",
+    "email-validator>=2.0.0",
+    "beautifulsoup4>=4.12.3",
+    "playwright>=1.42.0",
+    "reportlab>=4.1.0",
+    "pypdf>=4.1.0",
+    "google-generativeai>=0.4.1",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "google-api-python-client>=2.122.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-auth-httplib2>=0.2.0",
+    "cryptography>=48.0.0",
+    "python-multipart>=0.0.29",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "config"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+

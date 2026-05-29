@@ -1,0 +1,54 @@
+search_parameters:
+  positions:
+  - Software Engineer
+  - Full Stack Developer
+  - Backend Engineer
+  locations:
+  - pune
+  distance: null
+  remote: true
+  candidate_experience_years: 7
+  candidate_skills:
+  - C#
+  - .NET Core
+  - React
+  - TypeScript
+  - AWS
+  - SQL Server
+  - Microservices
+  jobTypes:
+    full_time: true
+    contract: false
+  experienceLevel:
+    mid_level: true
+    senior: false
+  date_range:
+    past_24_hours: true
+  apply_once_at_company: true
+  companyBlacklist:
+  - Unwanted Corporation X
+  - Staffing Agency Inc
+  titleBlacklist:
+  - Sales
+  - Recruiter
+  - Account Executive
+candidate_identity:
+  personal_details:
+    first_name: Nitin
+    last_name: Pradhan
+    email: nitinpradhan48@gmail.com
+    phone: '+917795275103'
+  demographics:
+    gender: Male
+    pronouns: He/Him
+    veteran_status: 'No'
+    disability_status: 'No'
+    ethnicity: Declined to State
+compliance_preferences:
+  remote_work: 'Yes'
+  in_person_work: 'No'
+  open_to_relocation: 'Yes'
+  relocation_destinations: London, UK, India
+  willing_to_complete_assessments: 'Yes'
+  willing_to_undergo_drug_tests: 'No'
+  willing_to_undergo_background_checks: 'Yes'
