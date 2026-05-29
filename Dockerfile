@@ -9,15 +9,12 @@ RUN apt-get update && apt-get install -y \
 # Set up working directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
+# Copy the entire application
+COPY . .
 
 # Install pip and package dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
-
-# Copy the rest of the application
-COPY . .
 
 # Install Playwright browser and its OS dependencies
 RUN playwright install --with-deps chromium
