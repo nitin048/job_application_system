@@ -1876,3 +1876,7 @@ body {
   }
 }
 
+#save-config-btn {
+  margin-top: 15px !important;
+}
+
