@@ -101,31 +101,49 @@ graph TD
 
 ---
 
-## ⚙️ Installation & Setup
+## ⚙️ Setup & Running Guide
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/your-username/job-application-system.git
-   cd job-application-system
-   ```
+Here are the complete commands to get the application installed, configured, and running locally.
 
-2. **Set Up virtual Environment**:
-   * **Using `uv`** (Recommended):
-     ```bash
-     uv sync --all-groups
-     ```
-   * **Using `venv` & `pip`**:
-     ```bash
-     python -m venv .venv
-     source .venv/bin/activate
-     pip install -e .
-     ```
+### Option A: Using `uv` (Recommended & Faster)
 
-3. **Install Browser Dependencies**:
-   ```bash
-   # Activate virtual env first, then download Playwright Chromium binary
-   python -m playwright install chromium
-   ```
+If you have `uv` installed, run these commands from the root directory:
+
+```bash
+# 1. Install dependencies and create a virtual environment
+uv sync --all-groups
+
+# 2. Install Playwright browser binaries
+.venv/bin/playwright install chromium
+
+# 3. Start the application server
+.venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
+```
+
+---
+
+### Option B: Using standard `venv` and `pip`
+
+If you are using standard Python tools, run these commands from the root directory:
+
+```bash
+# 1. Create a virtual environment
+python -m venv .venv
+
+# 2. Activate the virtual environment
+source .venv/bin/activate
+
+# 3. Install the application and dependencies in editable mode
+pip install -e .
+
+# 4. Install Playwright browser binaries
+playwright install chromium
+
+# 5. Start the application server
+uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Once started, open your browser and navigate to: **`http://localhost:8000`**
 
 ---
 
@@ -163,19 +181,6 @@ search_filters:
 Keys are handled securely on the dashboard. Run the server, click the **Secrets & Keys** tab, and specify:
 * **Gemini API Key**: Used for custom resume tailoring and detailed job description summarization.
 * **SMTP Settings**: Host, port, user credentials (decrypted at runtime to send PDF emails directly).
-
----
-
-## 🏃 Running the Application
-
-Start the FastAPI local development server using Uvicorn:
-
-```bash
-# From the root directory:
-./.venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Open your browser and navigate to: **`http://localhost:8000`**
 
 ---
 
