@@ -74,25 +74,25 @@ graph TD
     O -->|Manual Apply| Q[Pause Browser for User Review]
 ```
 
-### 1. Main Entry Point ([main.py](file:///Users/nitinpradhan/Learning/job_application_system/main.py))
+### 1. Main Entry Point ([backend/main.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/main.py))
 Coordinates all CLI operations. Supports three principal parameters:
 - `--action test-graph`: Simulates a mock DOM form-filling pipeline using the `FormGraphOrchestrator` to validate state transition correctness.
 - `--action bump-naukri`: Logs in to Naukri, applies the PDF Hash Buster to the resume, and uploads it to refresh candidate timestamp visibility in search queries.
 - `--action apply --job-id <id>`: Automates the entire sequence for a single job: extracts details, tailors the resume via AI, syncs it to Google Drive, and executes form submissions.
 
-### 2. FastAPI Web Server ([src/server.py](file:///Users/nitinpradhan/Learning/job_application_system/src/server.py))
+### 2. FastAPI Web Server ([backend/src/server.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/server.py))
 Serves static assets and provides JSON API endpoints. It runs background threads for crawling and applying, logs output to an on-screen terminal logger block, and handles configuration updates. Credentials (passwords, SMTP details, API keys) are written encrypted using Fernet cryptography.
 
-### 3. Secure Browser Driver ([src/browser_driver.py](file:///Users/nitinpradhan/Learning/job_application_system/src/browser_driver.py))
+### 3. Secure Browser Driver ([backend/src/browser_driver.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/browser_driver.py))
 Wraps Playwright's Chromium execution engine. Key capabilities:
 - **Anti-Bot Evasions**: Injects custom Javascript on browser initialization that sets `navigator.webdriver = undefined`, overrides `navigator.plugins` to mimic a real desktop browser, and configures default languages.
 - **CDP Integration**: Connects over a running Chrome debugger port (Chrome DevTools Protocol) to run automation inside an active native browser session.
-- **Session Preservation**: Stores and restores cookies, localStorage, and browser configurations to `data/session_state.json` to keep Naukri login sessions persistent.
+- **Session Preservation**: Stores and restores cookies, localStorage, and browser configurations to `backend/data/session_state.json` to keep Naukri login sessions persistent.
 
-### 4. Job Ingestion & Extractor ([src/job_crawler.py](file:///Users/nitinpradhan/Learning/job_application_system/src/job_crawler.py))
+### 4. Job Ingestion & Extractor ([backend/src/job_crawler.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/job_crawler.py))
 Orchestrates parallel search-crawling. It generates query slugs matching candidate skills, crawls search results, extracts job details via BeautifulSoup4, and classifies apply types dynamically by checking for external redirect strings on active elements. It drops duplicate URLs and uses a fallback registry of high-fidelity local software engineering jobs when offline.
 
-### 5. Scoring Matrix ([src/scoring.py](file:///Users/nitinpradhan/Learning/job_application_system/src/scoring.py))
+### 5. Scoring Matrix ([backend/src/scoring.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/scoring.py))
 Uses a weighted linear combination scoring model to determine match fitness. If a job title contains a blacklisted phrase, it is instantly disqualified ($0.0$).
 * **Title Match (25% Weight)**: Matches title keywords.
 * **Location Match (20% Weight)**: Verifies city target matches.
@@ -100,27 +100,27 @@ Uses a weighted linear combination scoring model to determine match fitness. If 
 * **Workplace Type Match (15% Weight)**: Matches Remote, Hybrid, or On-site preference.
 * **Seniority Match (15% Weight)**: Compares years of experience required vs. candidate profile.
 
-### 6. AI Resume Customizer ([src/resume_tweaker.py](file:///Users/nitinpradhan/Learning/job_application_system/src/resume_tweaker.py))
+### 6. AI Resume Customizer ([backend/src/resume_tweaker.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/resume_tweaker.py))
 Optimizes resume configurations:
 - **Gemini Context Loop**: Customizes the resume description, summary, skills matrix, and professional bullet points based on the target job description while retaining dates, places, and authentic titles.
 - **0.1s Heuristic Fallback**: Instantly falls back to local regex matching and keyword insertion heuristics if the Gemini API key is missing or rate limits are hit.
 - **ReportLab Compiler**: Renders structured JSON data into structured, single-column, highly readable, ATS-compliant PDFs with custom margin controls.
 
-### 7. Cryptographic Hash Buster ([src/document_generator.py](file:///Users/nitinpradhan/Learning/job_application_system/src/document_generator.py))
+### 7. Cryptographic Hash Buster ([backend/src/document_generator.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/document_generator.py))
 Appends randomized metadata attributes (`/ModifierID`, `/Keywords`) to compiled PDFs. This alters the file's binary signature and cryptographic hash (MD5, SHA-256) on every generation, preventing Naukri from identifying the upload as a duplicate document, thereby triggering profile update ranking loops.
 
-### 8. Stateful Form Graph ([src/form_graph.py](file:///Users/nitinpradhan/Learning/job_application_system/src/form_graph.py))
+### 8. Stateful Form Graph ([backend/src/form_graph.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/form_graph.py))
 Models online application forms as stateful machines. It iterates through four state nodes:
 1. **Initialize**: Validates the endpoint security protocol and URL.
 2. **Extract**: Scrapes input fields, selects, textareas, file upload targets, and associates adjacent descriptive labels.
 3. **Generate**: Binds user data (names, demographics, compliance answers) to inputs.
 4. **Assemble**: Generates the form payload, uploads PDFs, takes browser screenshots, and clicks submit.
 
-### 9. Google Drive Synchronization ([src/gdrive_manager.py](file:///Users/nitinpradhan/Learning/job_application_system/src/gdrive_manager.py))
+### 9. Google Drive Synchronization ([backend/src/gdrive_manager.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/gdrive_manager.py))
 If synchronization is enabled, automatically uploads generated PDFs to the user's Google Drive. Once verified, it securely deletes local copies to prevent local document leakage, downloading them back on-the-fly only when needed for browser submission.
 
-### 10. Cryptographic Key Vault ([src/crypto_manager.py](file:///Users/nitinpradhan/Learning/job_application_system/src/crypto_manager.py))
-Implements Fernet symmetric encryption to encrypt secrets on disk (`config/constants.py`). Decryption keys are loaded securely at runtime, ensuring sensitive credentials (Naukri password, API keys, SMTP credentials) are never stored in plaintext format.
+### 10. Cryptographic Key Vault ([backend/src/crypto_manager.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/crypto_manager.py))
+Implements Fernet symmetric encryption to encrypt secrets on disk (`backend/config/constants.py`). Decryption keys are loaded securely at runtime, ensuring sensitive credentials (Naukri password, API keys, SMTP credentials) are never stored in plaintext format.
 
 ---
 
@@ -187,13 +187,17 @@ Here are the complete commands to get the application installed, configured, and
 If you have `uv` installed, run these commands from the root directory:
 
 ```bash
-# 1. Install dependencies and create a virtual environment
-uv sync --all-groups
+# 1. Navigate to the backend directory
+cd backend
 
-# 2. Install Playwright browser binaries
+# 2. Install dependencies and create a virtual environment
+uv venv
+uv pip install -e .
+
+# 3. Install Playwright browser binaries
 .venv/bin/playwright install chromium
 
-# 3. Start the application server
+# 4. Start the application server
 .venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -204,19 +208,22 @@ uv sync --all-groups
 If you are using standard Python tools, run these commands from the root directory:
 
 ```bash
-# 1. Create a virtual environment
+# 1. Navigate to the backend directory
+cd backend
+
+# 2. Create a virtual environment
 python -m venv .venv
 
-# 2. Activate the virtual environment
+# 3. Activate the virtual environment
 source .venv/bin/activate
 
-# 3. Install the application and dependencies in editable mode
+# 4. Install the application and dependencies in editable mode
 pip install -e .
 
-# 4. Install Playwright browser binaries
+# 5. Install Playwright browser binaries
 playwright install chromium
 
-# 5. Start the application server
+# 6. Start the application server
 uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -266,6 +273,9 @@ Keys are handled securely on the dashboard. Run the server, click the **Secrets 
 Execute the test suite to verify that all modules are running perfectly:
 
 ```bash
+# Navigate to the backend directory
+cd backend
+
 # Run unit and integration tests
 ./.venv/bin/python -m unittest discover tests
 ```
