@@ -75,9 +75,9 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
   });
 
   test("4. Navigate through config tabs and verify Save banner on modification", async ({ page }) => {
-    // Click on "1. Search Filters" configuration tab
-    await page.getByRole("button", { name: "1. Search Filters" }).click();
-    await expect(page.locator("h1")).toContainText("1. Search Scope & Targets");
+    // Click on "Search Scope" configuration tab
+    await page.getByRole("button", { name: "Search Scope" }).click();
+    await expect(page.locator("h1")).toContainText("Search Scope");
 
     // Find the positions input field, fill in some new text to trigger modification
     const positionsInput = page.locator("#positions-input");
@@ -95,12 +95,12 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
   });
 
-  test("5. Navigate to Runtime Logs page and check basic elements", async ({ page }) => {
-    // Click on Runtime Logs tab in sidebar
-    await page.getByRole("button", { name: "Runtime Logs", exact: true }).click();
+  test("5. Navigate to System Diagnostics page and check basic elements", async ({ page }) => {
+    // Click on System Diagnostics tab in sidebar
+    await page.getByRole("button", { name: "System Diagnostics", exact: true }).click();
 
     // Verify title
-    await expect(page.locator("h1")).toContainText("Runtime Logs");
+    await expect(page.locator("h1")).toContainText("System Diagnostics");
 
     // Check header section
     await expect(page.locator("text=Runtime Logs & Exception Tracking")).toBeVisible();
@@ -174,8 +174,8 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
   });
 
   test("9. Test sessionStorage configuration persistence and isolation on refresh", async ({ page, context }) => {
-    // Navigate to 1. Search Filters configuration tab
-    await page.getByRole("button", { name: "1. Search Filters" }).click();
+    // Navigate to Search Scope configuration tab
+    await page.getByRole("button", { name: "Search Scope" }).click();
     
     // Fill in a unique position target
     const positionsInput = page.locator("#positions-input");
@@ -190,15 +190,15 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await page.reload();
     
     // Check that the saved position target persists after refresh
-    await page.getByRole("button", { name: "1. Search Filters" }).click();
+    await page.getByRole("button", { name: "Search Scope" }).click();
     await expect(positionsInput).toHaveValue("E2E Test Session Engineer");
     
     // Open a completely new tab/context to verify session isolation
     const newPage = await context.newPage();
     await newPage.goto("/");
     
-    // Navigate to Search Filters on the new page
-    await newPage.getByRole("button", { name: "1. Search Filters" }).click();
+    // Navigate to Search Scope on the new page
+    await newPage.getByRole("button", { name: "Search Scope" }).click();
     const newPositionsInput = newPage.locator("#positions-input");
     await expect(newPositionsInput).toBeVisible();
     
@@ -208,8 +208,8 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
   });
 
   test("10. Test Search Filters suggestions, spaces, and commas behavior", async ({ page }) => {
-    // Navigate to 1. Search Filters configuration tab
-    await page.getByRole("button", { name: "1. Search Filters" }).click();
+    // Navigate to Search Scope configuration tab
+    await page.getByRole("button", { name: "Search Scope" }).click();
 
     const positionsInput = page.locator("#positions-input");
     await expect(positionsInput).toBeVisible();
