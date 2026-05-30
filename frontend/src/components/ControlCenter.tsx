@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2, AlertOctagon, X } from "lucide-react";
+import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2, AlertOctagon, X, KeyRound, Loader2 } from "lucide-react";
 import ErrorLogs from "./ErrorLogs";
 
 interface ControlCenterProps {
@@ -20,12 +20,55 @@ export default function ControlCenter({
   showToast
 }: ControlCenterProps) {
   const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
+  const [isValidatingGemini, setIsValidatingGemini] = useState(false);
+  const [isPurgingJobs, setIsPurgingJobs] = useState(false);
   const [simFields, setSimFields] = useState({
     firstName: "",
     lastName: "",
     email: "",
     relocate: ""
   });
+
+  const handleValidateGemini = async () => {
+    setIsValidatingGemini(true);
+    setLogs((prev) => prev + `[System] Testing Gemini LLM connectivity...\n`);
+    try {
+      const res = await fetch("/api/validate-gemini", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Validation request failed.");
+      }
+      showToast(data.message, "success");
+      setLogs((prev) => prev + `[Success] Gemini Check: ${data.message}\n`);
+    } catch (err: any) {
+      showToast(err.message, "error");
+      setLogs((prev) => prev + `[Error] Gemini Check: ${err.message}\n`);
+    } finally {
+      setIsValidatingGemini(false);
+    }
+  };
+
+  const handlePurgeJobs = async () => {
+    if (!confirm("Are you sure you want to clear all matching jobs from your local database cache? This action is irreversible.")) {
+      return;
+    }
+    setIsPurgingJobs(true);
+    setLogs((prev) => prev + `[System] Purging discovered jobs cache...\n`);
+    try {
+      const res = await fetch("/api/jobs/purge", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Purge request failed.");
+      }
+      showToast(data.message, "success");
+      setLogs((prev) => prev + `[Success] Database: ${data.message}\n`);
+    } catch (err: any) {
+      showToast(err.message, "error");
+      setLogs((prev) => prev + `[Error] Database: ${err.message}\n`);
+    } finally {
+      setIsPurgingJobs(false);
+    }
+  };
 
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +216,7 @@ export default function ControlCenter({
             <button
               onClick={() => triggerAction("test-graph")}
               disabled={isScanning}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-800 hover:bg-zinc-700/85 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer border border-zinc-700 transition"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-850 hover:bg-zinc-700/85 disabled:opacity-50 text-white border border-zinc-800 rounded-xl text-xs font-semibold cursor-pointer transition"
             >
               <Play size={14} className="text-zinc-400" />
               Run Mock Graph Validation
@@ -185,6 +228,30 @@ export default function ControlCenter({
             >
               <Zap size={14} />
               Bump Naukri Visibility
+            </button>
+            <button
+              onClick={handleValidateGemini}
+              disabled={isScanning || isValidatingGemini}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer transition"
+            >
+              {isValidatingGemini ? (
+                <Loader2 size={14} className="animate-spin text-zinc-450" />
+              ) : (
+                <KeyRound size={14} className="text-indigo-400" />
+              )}
+              {isValidatingGemini ? "Testing Key..." : "Test Gemini LLM Key"}
+            </button>
+            <button
+              onClick={handlePurgeJobs}
+              disabled={isScanning || isPurgingJobs}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 disabled:opacity-50 text-rose-400 hover:text-rose-350 hover:bg-rose-500/5 rounded-xl text-xs font-semibold cursor-pointer transition"
+            >
+              {isPurgingJobs ? (
+                <Loader2 size={14} className="animate-spin text-rose-455" />
+              ) : (
+                <Trash2 size={14} className="text-rose-400" />
+              )}
+              {isPurgingJobs ? "Purging Cache..." : "Purge Jobs Database"}
             </button>
           </div>
 
