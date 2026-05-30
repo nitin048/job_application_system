@@ -89,6 +89,9 @@ class SecureBrowserDriver:
         if self.context and not self.cdp_address:
             self.save_state()
         if self.browser:
-            self.browser.close()
+            if self.cdp_address:
+                self.browser.disconnect()
+            else:
+                self.browser.close()
         if self.playwright:
             self.playwright.stop()
