@@ -160,9 +160,10 @@ The backend web server exposes the following endpoints for the frontend dashboar
 * **Security**: Cryptography (Fernet-encrypted SMTP settings)
 
 ### Frontend Dashboard
-* **Structure & UI**: HTML5, Semantic DOM structure
-* **Styling**: Vanilla CSS (CSS Custom Properties, Glassmorphism backdrop-filters, flex grids, fade transitions)
-* **Logic**: Vanilla ES6+ JavaScript (State management, local storage sync, progress polling callbacks)
+* **Framework**: React 19 (Component-based architecture, state management hooks, side effects)
+* **Build Tool**: Vite 8+
+* **Styling**: Tailwind CSS v4.0 (Utility-first CSS, custom variables, responsive design)
+* **Language**: TypeScript 6+
 * **Autocomplete Integrations**: 
   * *StackExchange API* (skills suggestion)
   * *Clearbit Autocomplete API* (company names)

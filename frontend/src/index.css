@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.01);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* Custom styles for things not easily coverable by Tailwind CSS utility classes */
+.ats-circle {
+  position: relative;
+  border-radius: 50%;
+  background: conic-gradient(var(--color-accent) 0%, rgba(255, 255, 255, 0.05) 0%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.ats-circle::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: #141419;
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.ats-circle-value {
+  position: relative;
+  z-index: 2;
+  font-weight: 700;
+  color: #fff;
+}

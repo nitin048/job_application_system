@@ -520,7 +520,12 @@ Instructions:
         if data.get("title"):
             story.append(Paragraph(data.get("title"), style_title))
             story.append(Spacer(1, 4))
-        story.append(Paragraph(data.get("contact", ""), style_contact))
+        contact_val = data.get("contact", "")
+        if isinstance(contact_val, dict):
+            contact_str = " | ".join(str(v) for v in contact_val.values() if v)
+        else:
+            contact_str = str(contact_val)
+        story.append(Paragraph(contact_str, style_contact))
         story.append(Spacer(1, 6))
         
         # 2. Loop through all sections dynamically to keep original visual structure
