@@ -2,14 +2,35 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Autonomous AI Job Application System E2E Flow", () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to the dashboard
+    // Navigate to the root
     await page.goto("/");
+
+    // Check if redirected to the Authentication Gate (LoginPage)
+    const emailInput = page.locator('input[placeholder="you@example.com"]');
+    if (await emailInput.isVisible()) {
+      // Navigate to signup page
+      await page.locator('button:has-text("Create an Account")').click();
+
+      // Fill in details
+      await page.locator('input[placeholder="John Doe"]').fill("E2E Test User");
+      await page.locator('input[placeholder="you@example.com"]').fill("e2e@example.com");
+      await page.locator('input[placeholder="Min. 8 characters"]').fill("password123");
+      await page.locator('input[placeholder="Re-enter password"]').fill("password123");
+      await page.locator('input[placeholder="Your answer (case-insensitive)"]').fill("Fluffy");
+
+      // Check terms and click Create Account
+      await page.locator('#auth-terms').check();
+      await page.getByRole("button", { name: "Create Account" }).click();
+
+      // Ensure we transition successfully to the main dashboard view
+      await expect(page.locator("h1")).toContainText("Dashboard", { timeout: 10000 });
+    }
   });
 
   test("1. Land on Dashboard and verify layout, then navigate to Control Center", async ({ page }) => {
     // Check that we see the page title / header for Dashboard
     await expect(page.locator("h1")).toContainText("Dashboard");
-    await expect(page.locator("text=Aegis Flow: Accelerate Your Career Search")).toBeVisible();
+    await expect(page.locator("text=Autonomous AI Job Assistant")).toBeVisible();
 
     // Navigate to Control Center tab in the sidebar
     await page.getByRole("button", { name: "Control Center", exact: true }).click();

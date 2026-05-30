@@ -12,8 +12,15 @@ import LegalEeo from "./components/LegalEeo";
 import SecretsKeys from "./components/SecretsKeys";
 import ErrorLogs from "./components/ErrorLogs";
 import About from "./components/About";
+import ProfilePage from "./components/ProfilePage";
+import LoginPage from "./components/auth/LoginPage";
+import SignUpPage from "./components/auth/SignUpPage";
+import ForgotPassword from "./components/auth/ForgotPassword";
+import { useAuth } from "./contexts/AuthContext";
 
 export default function App() {
+  const { isAuthenticated, isLoading, user, authView, logout } = useAuth();
+
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -89,6 +96,10 @@ export default function App() {
 
   // Startup Hooks
   useEffect(() => {
+    if (!isAuthenticated) {
+      setActiveTab("dashboard");
+      return;
+    }
     loadConfig();
     loadJobs();
     checkScanningStatus();
@@ -123,7 +134,7 @@ export default function App() {
       window.removeEventListener("error", handleGlobalError);
       window.removeEventListener("unhandledrejection", handlePromiseRejection);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Polling loop for logs and scan status
   useEffect(() => {
@@ -302,6 +313,8 @@ export default function App() {
 
   const getPageMeta = () => {
     switch (activeTab) {
+      case "profile":
+        return { title: "Account Settings", desc: "Update your profile details, change security passwords, or manage your recovery keys." };
       case "dashboard":
         return { title: "Dashboard", desc: "Overview of your job application pipeline, system setup progress, and core microservices." };
       case "control-center":
@@ -328,6 +341,27 @@ export default function App() {
   };
 
   const meta = getPageMeta();
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-full bg-zinc-950 text-zinc-500">
+        <Loader2 className="animate-spin text-indigo-500 mb-3" size={28} />
+        <span className="text-xs font-semibold">Decrypting credentials vault...</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    if (authView === "login") {
+      return <LoginPage />;
+    }
+    if (authView === "signup") {
+      return <SignUpPage />;
+    }
+    if (authView === "forgot-password") {
+      return <ForgotPassword />;
+    }
+  }
 
   return (
     <ErrorBoundary>
@@ -361,6 +395,8 @@ export default function App() {
           mobileOpen={mobileMenuOpen}
           setMobileOpen={setMobileMenuOpen}
           isScanning={isScanning}
+          user={user}
+          onLogout={logout}
         />
 
         {/* Main Content Area */}
@@ -429,6 +465,7 @@ export default function App() {
                     config={config}
                     setActiveTab={setActiveTab}
                     isScanning={isScanning}
+                    user={user}
                   />
                 )}
                 {activeTab === "control-center" && (
@@ -492,6 +529,9 @@ export default function App() {
                 )}
                 {activeTab === "about" && (
                   <About />
+                )}
+                {activeTab === "profile" && (
+                  <ProfilePage />
                 )}
               </>
             ) : (

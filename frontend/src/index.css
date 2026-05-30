@@ -41,3 +41,89 @@
   font-weight: 700;
   color: #fff;
 }
+
+/* ─── Premium Authentication Animations ────────────────────── */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-fade-in-up {
+  animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes floatShape {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.08);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+}
+
+.auth-float-shape {
+  animation: floatShape 12s ease-in-out infinite;
+}
+
+@keyframes floatGeo {
+  0%, 100% {
+    transform: rotate(0deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(180deg) translate(10px, -15px);
+  }
+}
+
+.auth-float-geo {
+  animation: floatGeo 8s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.auth-shimmer {
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #a5b4fc 25%,
+    #818cf8 50%,
+    #a5b4fc 75%,
+    #ffffff 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 6s linear infinite;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%, 45%, 75% { transform: translateX(-4px); }
+  30%, 60%, 90% { transform: translateX(4px); }
+}
+
+.auth-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.auth-input-glow:focus {
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+}
