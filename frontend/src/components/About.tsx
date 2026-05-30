@@ -74,8 +74,12 @@ export default function About() {
             </h2>
             
             <div className="flex items-center gap-4 mb-4">
-              <div className="relative w-14 h-14 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xl font-bold text-white overflow-hidden shadow-inner bg-gradient-to-tr from-indigo-600/30 to-purple-600/30">
-                NP
+              <div className="relative w-14 h-14 rounded-full border border-zinc-700/80 overflow-hidden shadow-inner flex-shrink-0 bg-zinc-800 flex items-center justify-center">
+                <img
+                  src="/avatar.jpg"
+                  alt="Nitin Pradhan Avatar"
+                  className="w-full h-full object-cover object-[center_28%]"
+                />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white">Nitin Pradhan</h3>
