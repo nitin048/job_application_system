@@ -68,6 +68,23 @@ import time
 
 ERROR_LOG_PATH = ROOT_DIR / "data" / "runtime_errors.json"
 
+def run_in_clean_thread(func, *args, **kwargs):
+    import threading
+    import contextvars
+    result = {}
+    def target_wrapper(ctx):
+        try:
+            result["value"] = ctx.run(func, *args, **kwargs)
+        except Exception as e:
+            result["exception"] = e
+    ctx = contextvars.copy_context()
+    thread = threading.Thread(target=target_wrapper, args=(ctx,))
+    thread.start()
+    thread.join()
+    if "exception" in result:
+        raise result["exception"]
+    return result.get("value")
+
 def log_runtime_error(category: str, message: str, details: str):
     errors = []
     if ERROR_LOG_PATH.exists():
@@ -778,7 +795,11 @@ def apply_to_job(job_id: str, background_tasks: BackgroundTasks):
     if job.get("applied"):
         return {"status": "already_applied", "message": f"Already applied to this job."}
 
-    background_tasks.add_task(_run_apply_inprocess, job_id)
+    import threading
+    import contextvars
+    ctx = contextvars.copy_context()
+    thread = threading.Thread(target=ctx.run, args=(_run_apply_inprocess, job_id))
+    thread.start()
     return {"status": "started", "message": f"Auto-apply initiated for '{job.get('title', job_id)}'. Watch the terminal for live status."}
 
 
@@ -1595,7 +1616,7 @@ def resume_hub_crawl(payload: JobCrawlRequest):
     if not is_valid_job_portal(url):
         raise HTTPException(status_code=400, detail="Please provide correct job portal url.")
         
-    details = crawl_job_portal_details(url)
+    details = run_in_clean_thread(crawl_job_portal_details, url)
     if not details.get("description"):
         raise HTTPException(status_code=404, detail="Could not retrieve job description from the provided portal URL.")
         
