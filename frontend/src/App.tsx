@@ -43,6 +43,14 @@ export default function App() {
   // Load Configurations
   const loadConfig = async () => {
     try {
+      const savedConfig = sessionStorage.getItem("aegis_flow_config");
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig);
+        setConfig(parsed);
+        setLocalConfig(JSON.parse(JSON.stringify(parsed)));
+        return;
+      }
+
       const res = await fetch("/api/config");
       if (!res.ok) throw new Error("Could not retrieve setup variables.");
       const data = await res.json();
@@ -50,7 +58,7 @@ export default function App() {
       setLocalConfig(JSON.parse(JSON.stringify(data))); // Deep clone for local edits
     } catch (err: any) {
       console.error(err);
-      showToast("Error loading configurations from database.", "error");
+      showToast("Error loading configurations.", "error");
     }
   };
 
@@ -216,7 +224,7 @@ export default function App() {
   // Save Config handler
   const handleSaveConfig = async () => {
     setIsSaving(true);
-    showToast("Saving configurations and writing to disk...", "success");
+    showToast("Saving configurations...", "success");
 
     try {
       const res = await fetch("/api/config", {
@@ -225,11 +233,14 @@ export default function App() {
         body: JSON.stringify(localConfig)
       });
       if (!res.ok) throw new Error("Could not update configs.");
-      showToast("Configurations saved and encrypted successfully!", "success");
-      loadConfig(); // Refresh
+      
+      // Store config dynamically in sessionStorage
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(localConfig));
+      setConfig(JSON.parse(JSON.stringify(localConfig)));
+      showToast("Configurations saved to browser session successfully!", "success");
     } catch (err: any) {
       console.error(err);
-      showToast("Failed to save configuration files.", "error");
+      showToast("Failed to save configurations.", "error");
     } finally {
       setIsSaving(false);
     }

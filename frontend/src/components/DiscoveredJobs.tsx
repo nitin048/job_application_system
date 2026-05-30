@@ -371,7 +371,10 @@ export default function DiscoveredJobs({
                       {isTailored ? (
                         <div className="grid grid-cols-3 gap-1.5 w-full">
                           <button
-                            onClick={() => window.open(`/api/jobs/${job.id}/tailor/view`, "_blank")}
+                            onClick={() => {
+                              const configVal = sessionStorage.getItem("aegis_flow_config") || "";
+                              window.open(`/api/jobs/${job.id}/tailor/view?config=${encodeURIComponent(configVal)}`, "_blank");
+                            }}
                             title="View tailored PDF"
                             className="flex items-center justify-center p-2 bg-zinc-950 border border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900 rounded-lg text-zinc-400 hover:text-white cursor-pointer transition text-xs font-semibold"
                           >
@@ -385,7 +388,10 @@ export default function DiscoveredJobs({
                             <Scale size={14} />
                           </button>
                           <button
-                            onClick={() => (window.location.href = `/api/jobs/${job.id}/tailor/download`)}
+                            onClick={() => {
+                              const configVal = sessionStorage.getItem("aegis_flow_config") || "";
+                              window.location.href = `/api/jobs/${job.id}/tailor/download?config=${encodeURIComponent(configVal)}`;
+                            }}
                             title="Download tailored PDF"
                             className="flex items-center justify-center p-2 bg-zinc-950 border border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900 rounded-lg text-zinc-400 hover:text-white cursor-pointer transition text-xs font-semibold"
                           >

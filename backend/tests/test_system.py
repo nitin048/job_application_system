@@ -18,8 +18,88 @@ from pypdf import PdfReader
 
 class TestJobApplicationSystem(unittest.TestCase):
     def setUp(self):
+        import config.constants as consts
+        from src.config_loader import session_config_var as loader_var
+        
+        self.test_session_config = {
+            "searches": {
+                "search_parameters": {
+                    "positions": ["Software Engineer", "Full Stack Developer", "Backend Engineer"],
+                    "locations": ["pune"],
+                    "distance": None,
+                    "remote": True,
+                    "candidate_experience_years": 7.0,
+                    "candidate_skills": ["C#", ".NET Core", "React", "TypeScript", "AWS", "SQL Server", "Microservices"],
+                    "jobTypes": {
+                        "full_time": True,
+                        "contract": False
+                    },
+                    "experienceLevel": {
+                        "mid_level": True,
+                        "senior": False
+                    },
+                    "date_range": {
+                        "past_24_hours": True
+                    },
+                    "apply_once_at_company": True,
+                    "companyBlacklist": ["Unwanted Corporation X", "Staffing Agency Inc"],
+                    "titleBlacklist": ["Sales", "Recruiter", "Account Executive"]
+                },
+                "candidate_identity": {
+                    "personal_details": {
+                        "first_name": "Nitin",
+                        "last_name": "Pradhan",
+                        "email": "nitinpradhan48@gmail.com",
+                        "phone": "+917795275103"
+                    },
+                    "demographics": {
+                        "gender": "Male",
+                        "pronouns": "He/Him",
+                        "veteran_status": "No",
+                        "disability_status": "No",
+                        "ethnicity": "Declined to State"
+                    }
+                },
+                "compliance_preferences": {
+                    "remote_work": "Yes",
+                    "in_person_work": "No",
+                    "open_to_relocation": "Yes",
+                    "relocation_destinations": "London, UK, India",
+                    "willing_to_complete_assessments": "Yes",
+                    "willing_to_undergo_drug_tests": "No",
+                    "willing_to_undergo_background_checks": "Yes"
+                }
+            },
+            "constants": {
+                "USERNAME": "nitinpradhan48@gmail.com",
+                "PASSWORD": "mock_password",
+                "MOBILE": "+917795275103",
+                "RESUME_PATH": str(Path(__file__).parent.parent / "data" / "test_resume.pdf"),
+                "MODIFIED_RESUME_PATH": str(Path(__file__).parent.parent / "data" / "test_modified_resume.pdf"),
+                "GEMINI_API_KEY": "mock_gemini_key",
+                "UPDATE_PDF_HASH": True,
+                "AGENT_BROWSER_HEADED": False,
+                "AGENT_BROWSER_CDP": "",
+                "GDRIVE_SYNC_ENABLED": False,
+                "GDRIVE_CLIENT_SECRETS_PATH": "config/credentials.json",
+                "GDRIVE_TOKEN_PATH": "data/token.json",
+                "SMTP_HOST": "",
+                "SMTP_PORT": 587,
+                "SMTP_USER": "",
+                "SMTP_PASSWORD": ""
+            }
+        }
+        self.token_consts = consts.session_config_var.set(self.test_session_config)
+        self.token_loader = loader_var.set(self.test_session_config)
+        
         self.config_path = Path(__file__).parent.parent / "config" / "searches.yaml"
         self.config = load_config(self.config_path)
+
+    def tearDown(self):
+        import config.constants as consts
+        from src.config_loader import session_config_var as loader_var
+        consts.session_config_var.reset(self.token_consts)
+        loader_var.reset(self.token_loader)
 
     def test_config_loader(self):
         self.assertEqual(self.config.candidate_identity.personal_details.first_name, "Nitin")

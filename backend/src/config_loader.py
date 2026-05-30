@@ -1,7 +1,10 @@
 import os
 import yaml
+import contextvars
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
+
+session_config_var = contextvars.ContextVar("session_config_var", default=None)
 
 class SearchParameters(BaseModel):
     positions: list[str]
@@ -49,6 +52,23 @@ class JobAppConfig(BaseModel):
     compliance_preferences: CompliancePreferences
 
 def load_config(config_path: str | Path) -> JobAppConfig:
+    # 1. First, check if there is an active session config ContextVar
+    current_config = session_config_var.get()
+    if current_config and "searches" in current_config:
+        return JobAppConfig(**current_config["searches"])
+
+    # 2. Second, check if a temporary session config JSON path is specified via environment variable
+    session_config_path = os.getenv("AEGIS_SESSION_CONFIG_PATH")
+    if session_config_path and os.path.exists(session_config_path):
+        try:
+            with open(session_config_path, "r", encoding="utf-8") as f:
+                import json
+                file_config = json.load(f)
+                if "searches" in file_config:
+                    return JobAppConfig(**file_config["searches"])
+        except Exception:
+            pass
+
     with open(config_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return JobAppConfig(**data)

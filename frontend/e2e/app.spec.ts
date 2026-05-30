@@ -152,4 +152,38 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await expect(page.locator("text=Copyright © 2026 Aegis Flow")).toBeVisible();
     await expect(page.locator("text=Legal Disclaimer & Terms")).toBeVisible();
   });
+
+  test("9. Test sessionStorage configuration persistence and isolation on refresh", async ({ page, context }) => {
+    // Navigate to 1. Search Filters configuration tab
+    await page.getByRole("button", { name: "1. Search Filters" }).click();
+    
+    // Fill in a unique position target
+    const positionsInput = page.locator('input[placeholder*="positions to scan"]');
+    if (await positionsInput.isVisible()) {
+      await positionsInput.fill("E2E Test Session Engineer");
+      
+      // Save changes
+      await page.locator("button", { name: "Save Settings" }).click();
+      await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
+      
+      // Refresh page
+      await page.reload();
+      
+      // Check that the saved position target persists after refresh
+      await page.getByRole("button", { name: "1. Search Filters" }).click();
+      await expect(positionsInput).toHaveValue("E2E Test Session Engineer");
+      
+      // Open a completely new tab/context to verify session isolation
+      const newPage = await context.newPage();
+      await newPage.goto("/");
+      
+      // Navigate to Search Filters on the new page
+      await newPage.getByRole("button", { name: "1. Search Filters" }).click();
+      const newPositionsInput = newPage.locator('input[placeholder*="positions to scan"]');
+      
+      // The value should be empty / not have "E2E Test Session Engineer" (isolation check)
+      await expect(newPositionsInput).not.toHaveValue("E2E Test Session Engineer");
+      await newPage.close();
+    }
+  });
 });
