@@ -2,6 +2,9 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Autonomous AI Job Application System E2E Flow", () => {
   test.beforeEach(async ({ page }) => {
+    // Generate a unique email for each test to ensure complete database isolation
+    const testEmail = `e2e_${Math.random().toString(36).substring(2, 9)}@example.com`;
+
     // Navigate to the root
     await page.goto("/");
 
@@ -13,7 +16,7 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
 
       // Fill in details
       await page.locator('input[placeholder="John Doe"]').fill("E2E Test User");
-      await page.locator('input[placeholder="you@example.com"]').fill("e2e@example.com");
+      await page.locator('input[placeholder="you@example.com"]').fill(testEmail);
       await page.locator('input[placeholder="Min. 8 characters"]').fill("password123");
       await page.locator('input[placeholder="Re-enter password"]').fill("password123");
       await page.locator('input[placeholder="Your answer (case-insensitive)"]').fill("Fluffy");
@@ -202,9 +205,25 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await page.getByRole("button", { name: "Search Scope" }).click();
     await expect(positionsInput).toHaveValue("E2E Test Session Engineer");
     
-    // Open a completely new tab/context to verify session isolation
-    const newPage = await context.newPage();
+    // Open a completely new browser context to verify user-level database isolation
+    const newContext = await context.browser()!.newContext();
+    const newPage = await newContext.newPage();
     await newPage.goto("/");
+    
+    // Sign up as a second user
+    const secondEmail = `e2e_second_${Math.random().toString(36).substring(2, 9)}@example.com`;
+    const emailInput = newPage.locator('input[placeholder="you@example.com"]');
+    if (await emailInput.isVisible()) {
+      await newPage.locator('button:has-text("Create an Account")').click();
+      await newPage.locator('input[placeholder="John Doe"]').fill("Second E2E User");
+      await newPage.locator('input[placeholder="you@example.com"]').fill(secondEmail);
+      await newPage.locator('input[placeholder="Min. 8 characters"]').fill("password123");
+      await newPage.locator('input[placeholder="Re-enter password"]').fill("password123");
+      await newPage.locator('input[placeholder="Your answer (case-insensitive)"]').fill("Fluffy");
+      await newPage.locator('#auth-terms').check();
+      await newPage.getByRole("button", { name: "Create Account" }).click();
+      await expect(newPage.locator("h1")).toContainText("Dashboard", { timeout: 10000 });
+    }
     
     // Navigate to Search Scope on the new page
     await newPage.getByRole("button", { name: "Search Scope" }).click();
@@ -214,6 +233,7 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     // The value should be empty / not have "E2E Test Session Engineer" (isolation check)
     await expect(newPositionsInput).not.toHaveValue("E2E Test Session Engineer");
     await newPage.close();
+    await newContext.close();
   });
 
   test("10. Test Search Filters suggestions, spaces, and commas behavior", async ({ page }) => {

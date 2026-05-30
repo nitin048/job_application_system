@@ -406,6 +406,38 @@ export default function SecretsKeys({
             placeholder="e.g. localhost:9222"
             className="w-full bg-zinc-950 border border-zinc-855 focus:border-indigo-500 text-xs px-3 py-2.5 rounded-lg outline-none text-zinc-200 transition"
           />
+          {consts.AGENT_BROWSER_CDP && (
+            (() => {
+              const val = consts.AGENT_BROWSER_CDP.trim();
+              if (val) {
+                let isNum = /^\d+$/.test(val);
+                if (isNum) {
+                  const port = parseInt(val, 10);
+                  if (port < 1 || port > 65535) {
+                    return (
+                      <span className="text-[10px] text-rose-400 mt-0.5 block font-semibold">
+                        ⚠️ Invalid port: Must be between 1 and 65535.
+                      </span>
+                    );
+                  }
+                } else if (val.includes(":")) {
+                  const parts = val.split(":");
+                  const portStr = parts[parts.length - 1];
+                  if (/^\d+$/.test(portStr)) {
+                    const port = parseInt(portStr, 10);
+                    if (port < 1 || port > 65535) {
+                      return (
+                        <span className="text-[10px] text-rose-400 mt-0.5 block font-semibold">
+                          ⚠️ Invalid port: Port number in address must be between 1 and 65535.
+                        </span>
+                      );
+                    }
+                  }
+                }
+              }
+              return null;
+            })()
+          )}
           <small className="text-[10px] text-zinc-600">Keeps session active by connecting to your open browser profile.</small>
         </div>
 

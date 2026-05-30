@@ -20,6 +20,7 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     "cryptography>=48.0.0",
     "python-multipart>=0.0.29",
+    "pymongo>=4.6.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -9,10 +9,5 @@ services:
         value: "1"
       - key: PORT
         value: "8000"
-    # Optional persistent disk for keeping discovered_jobs.json & session_state.json across restarts
-    # Note: Persistent disks require a paid plan on Render (e.g. $7/month).
-    # To use a persistent disk, uncomment the lines below:
-    # disk:
-    #   name: job-system-data
-    #   mountPath: /app/data
-    #   sizeGB: 1
+      - key: MONGODB_URI
+        sync: false

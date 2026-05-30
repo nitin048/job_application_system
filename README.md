@@ -31,8 +31,8 @@ An autonomous, end-to-end job board search, ingestion, compatibility scoring, an
 * **Ingestion Zone**: Drag-and-drop ingestion of PDF and DOCX formats. Features docx unzipping and XML text parsing natively without compiled third-party dependencies.
 * **ATS Compatibility Auditing**: circular conic scorecard gauges displaying Original vs. Tailored scores side-by-side (Original in Red/Danger, Tailored in Teal/Accent).
 * **Side-by-Side Visual Diffs**: Custom word-level highlights displaying layout-agnostic additions (in green) and deletions (in red strike-through) between original and tailored structures.
-* **Local Resumes Vault**: Secures generated PDFs and JSON configurations locally inside `assets/{company_name}_resume/` directories to preserve data localism, supporting Secure Deletions.
-* **Secure SMTP Emailer**: Decrypts passwords stored securely on disk to email tailored PDFs with attachments over TLS/SSL connections.
+* **MongoDB Resumes Vault**: Stores both original and tailored resumes as base64-encoded PDF binary buffers, plain text extracts, and structured JSON profiles directly in MongoDB, supporting database-level Secure Deletions and zero filesystem dependencies.
+* **Secure SMTP Emailer**: Decrypts passwords stored securely in MongoDB user configurations to email tailored PDFs as secure attachments over TLS/SSL connections.
 
 ### 🤖 3. Custom Resume Customizer
 * **Preservation Engine**: Structures raw resumes dynamically without enforcing rigid candidate templates, maintaining original margins, headings, section order, and layout.
@@ -49,33 +49,33 @@ An autonomous, end-to-end job board search, ingestion, compatibility scoring, an
 
 ## 📐 Subsystem Architecture & Components
 
-The application is structured as a decoupled architecture containing a modern React SPA client communicating over a JSON REST API with a FastAPI Python backend, coupled with a CLI interface for automation.
-
-![Decoupled System Architecture Diagram](doc/assets/system_structure_diagram.png)
+The application is structured as a decoupled architecture containing a modern React SPA client communicating over a JSON REST API with a FastAPI Python backend, backed by MongoDB for stateless cloud readiness, and coupled with a CLI interface for background automation.
 
 ### System Workflow Diagram
 ```mermaid
 graph TD
     A[React Client Dashboard] -->|REST API Requests| B[FastAPI Web Server]
+    B -->|Saves/Queries Data| DB[(MongoDB Database)]
     
     %% Ingestion Flow
     B -->|Concurrent Threads| C[Parallel Job Ingestion]
     C -->|Stealth Scraping| D[Naukri Portal]
     C -->|Parse Details| E[BeautifulSoup4 Extractor]
     E -->|Evaluate Fit| F[Scoring Matrix]
-    F -->|Write Cache| G[(backend/data/discovered_jobs.json)]
+    F -->|Write Cache| DB
     
     %% Resume Hub Flow
     B -->|Process Upload| H[Resume Hub Ingestion]
     H -->|DOCX/PDF Extract| I[Text Parser]
     I -->|Tailor Request| J[AI Resume Customizer]
     J -->|Query Prompt| K[Gemini API / Heuristic Fallback]
-    K -->|Compile PDF| L[ReportLab Compiler]
-    L -->|Write PDF| M[(backend/assets/ Resume Vault)]
+    K -->|Compile PDF (Temp)| L[ReportLab Compiler]
+    L -->|Base64 & Save PDF| DB
     
     %% Submission Flow
     B -->|Trigger Background Task| N[Playwright Submissions Graph]
-    N -->|Fetch PDF| M
+    N -->|Fetch PDF Bytes| DB
+    N -->|Restore/Save Cookies| DB
     N -->|Launch with Antidetect| O[Stealth Playwright Driver]
     O -->|Easy Apply| P[Auto-submit Form]
     O -->|Manual Apply| Q[Pause Browser for User Review]
@@ -86,6 +86,7 @@ graph TD
 graph TD
     Root[Project Root] --> Frontend[frontend/]
     Root --> Backend[backend/]
+    Root --> DB[(MongoDB Database)]
     
     Frontend --> F_Src[src/ React Components]
     Frontend --> F_E2E[e2e/ Playwright Spec Tests]
@@ -95,24 +96,23 @@ graph TD
     Backend --> B_Tests[tests/ Unit Tests]
     Backend --> B_Config[config/ YAML & secrets templates]
     Backend --> B_Data[data/ runtime_errors.json & logs]
-    Backend --> B_Assets[assets/ original & tailored resume vaults]
     Backend --> B_Static[static/ compiled frontend assets]
 ```
 
 ### 1. Main Entry Point ([backend/main.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/main.py))
 Coordinates all CLI operations. Supports three principal parameters:
 - `--action test-graph`: Simulates a mock DOM form-filling pipeline using the `FormGraphOrchestrator` to validate state transition correctness.
-- `--action bump-naukri`: Logs in to Naukri, applies the PDF Hash Buster to the resume, and uploads it to refresh candidate timestamp visibility in search queries.
-- `--action apply --job-id <id>`: Automates the entire sequence for a single job: extracts details, tailors the resume via AI, syncs it to Google Drive, and executes form submissions.
+- `--action bump-naukri`: Logs in to Naukri, retrieves the user's original resume from MongoDB to load dynamically into a temporary path, applies the PDF Hash Buster, and uploads it to refresh candidate visibility.
+- `--action apply --job-id <id>`: Automates the apply sequence for a single job: extracts details, tailors the resume from the baseline MongoDB record, syncs to Google Drive, and executes form submissions.
 
 ### 2. FastAPI Web Server ([backend/src/server.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/server.py))
-Serves static assets and provides JSON API endpoints. It runs background threads for crawling and applying, logs output to an on-screen terminal logger block, and handles configuration updates. Credentials (passwords, SMTP details, API keys) are written encrypted using Fernet cryptography.
+Serves static assets and provides JSON API endpoints. It runs background threads for crawling and applying, logs output to the dashboard console, and manages configurations. Authentic sessions and passwords/SMTP details are stored securely in MongoDB.
 
 ### 3. Secure Browser Driver ([backend/src/browser_driver.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/browser_driver.py))
 Wraps Playwright's Chromium execution engine. Key capabilities:
-- **Anti-Bot Evasions**: Injects custom Javascript on browser initialization that sets `navigator.webdriver = undefined`, overrides `navigator.plugins` to mimic a real desktop browser, and configures default languages.
-- **CDP Integration**: Connects over a running Chrome debugger port (Chrome DevTools Protocol) to run automation inside an active native browser session.
-- **Session Preservation**: Stores and restores cookies, localStorage, and browser configurations to `backend/data/session_state.json` to keep Naukri login sessions persistent.
+- **Anti-Bot Evasions**: Injects custom Javascript on browser initialization to mask automated crawler indicators.
+- **CDP Integration**: Connects over a running Chrome debugger port to run automation inside an active native browser session.
+- **Session Preservation**: Stores and restores cookies, localStorage, and browser configurations directly to/from MongoDB's `browser_states` collection, eliminating local session state files.
 
 ### 4. Job Ingestion & Extractor ([backend/src/job_crawler.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/job_crawler.py))
 Orchestrates parallel search-crawling. It generates query slugs matching candidate skills, crawls search results, extracts job details via BeautifulSoup4, and classifies apply types dynamically by checking for external redirect strings on active elements. It drops duplicate URLs and uses a fallback registry of high-fidelity local software engineering jobs when offline.
@@ -142,10 +142,10 @@ Models online application forms as stateful machines. It iterates through four s
 4. **Assemble**: Generates the form payload, uploads PDFs, takes browser screenshots, and clicks submit.
 
 ### 9. Google Drive Synchronization ([backend/src/gdrive_manager.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/gdrive_manager.py))
-If synchronization is enabled, automatically uploads generated PDFs to the user's Google Drive. Once verified, it securely deletes local copies to prevent local document leakage, downloading them back on-the-fly only when needed for browser submission.
+If synchronization is enabled, automatically uploads generated PDFs to the user's Google Drive. The manager retrieves client secrets and access tokens on-the-fly from MongoDB user configurations.
 
 ### 10. Cryptographic Key Vault ([backend/src/crypto_manager.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/src/crypto_manager.py))
-Implements Fernet symmetric encryption to encrypt secrets on disk (`backend/config/constants.py`). Decryption keys are loaded securely at runtime, ensuring sensitive credentials (Naukri password, API keys, SMTP credentials) are never stored in plaintext format.
+Implements Fernet symmetric encryption to encrypt secrets. Decryption keys are loaded securely at runtime, ensuring sensitive credentials (Naukri password, API keys, SMTP credentials) are never stored in plaintext format.
 
 ---
 
@@ -155,21 +155,41 @@ The backend web server exposes the following endpoints for the frontend dashboar
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `/api/config` | `GET` | Retrieves `searches.yaml` content and decrypted constants from `constants.py`. |
-| `/api/config` | `POST` | Safely encrypts and updates configurations on disk. |
+| `/api/config` | `GET` | Retrieves `searches.yaml` content and decrypted constants from MongoDB. |
+| `/api/config` | `POST` | Updates and encrypts searches and constant configurations in MongoDB. |
 | `/api/run` | `POST` | Launches main.py actions (`test-graph` / `bump-naukri`) in background threads. |
 | `/api/logs` | `GET` | Returns running log streams from background tasks. |
-| `/api/jobs` | `GET` | Fetches discovered and compatibility-scored listings. |
+| `/api/jobs` | `GET` | Fetches discovered and compatibility-scored listings from MongoDB. |
 | `/api/jobs/scan` | `POST` | Triggers a multi-threaded parallel crawl of Naukri job boards. |
 | `/api/jobs/scan/status` | `GET` | Returns scanning state (`is_scanning` and count). |
-| `/api/jobs/{job_id}/tailor` | `POST` | Tailors the resume PDF/JSON, computes ATS audits, and uploads to GDrive. |
-| `/api/jobs/{job_id}/tailor/view`| `GET` | Streams the tailored PDF inline for on-dashboard PDF rendering. |
-| `/api/jobs/{job_id}/tailor/download`| `GET`| Downloads the compiled tailored PDF. |
+| `/api/resume-hub/upload` | `POST` | Ingests PDF/DOCX resumes, structures text via Gemini, and saves to MongoDB. |
+| `/api/resume-hub/tailor` | `POST` | Tailors the resume PDF/JSON, computes ATS audits, and registers in MongoDB. |
+| `/api/resume-hub/files` | `GET` | Lists all tailored resume copies for the authenticated user from MongoDB. |
+| `/api/resume-hub/files` | `DELETE` | Deletes the tailored resume document from MongoDB. |
+| `/api/resume-hub/tailored_data` | `GET` | Gets tailored resume JSON structure directly from MongoDB. |
+| `/api/resume-hub/original_data` | `GET` | Gets original resume JSON structure directly from MongoDB. |
+| `/api/resume-hub/email` | `POST` | Decrypts SMTP credentials from MongoDB and sends tailored PDF attachment. |
+| `/api/jobs/{job_id}/tailor/view` | `GET` | Streams the tailored PDF from MongoDB inline for browser rendering. |
+| `/api/jobs/{job_id}/tailor/download` | `GET` | Streams the tailored PDF from MongoDB as a file download. |
 | `/api/jobs/{job_id}/tailored_data` | `GET` | Gets or computes the raw tailored JSON structure on the fly. |
 | `/api/jobs/{job_id}/apply` | `POST` | Commences the automated apply script sequence for the selected job. |
 | `/api/resume/original` | `GET` | Gets the default base candidate resume structure template. |
-| `/api/resume/upload` | `POST` | Ingests PDF/DOCX resumes, structures text via Gemini, and parses components. |
-| `/api/resume/email` | `POST` | Sends the tailored PDF as a secure SMTP attachment. |
+
+---
+
+## 🗄️ Database Schema & Component Mapping
+
+The system follows a stateless cloud-ready architecture. The table below represents how frontend interface pages and backend actions map directly to MongoDB collections and transient memory states:
+
+| Feature / Tab | Frontend Dashboard | Python Backend Core | MongoDB Collection / Target |
+| :--- | :--- | :--- | :--- |
+| **User Settings & Searches** | Configured via **Search Scope**, **Profile Details**, & **EEO** tabs. | Handled via ContextVars (`session_config_var`) scoped per user request. | Persisted dynamically in the **`configs`** collection (under the `searches` field). |
+| **Secrets & Passwords** | Input via **Secrets & Keys** tab, protected with a WebCrypto client key. | Decrypted in-memory at runtime via symmetric Fernet encryption. | Encrypted and stored securely in the **`configs`** collection (under the `constants` field). |
+| **Job Discovery Listings** | Interactive grid with filter tags, sorting by compatibility, and direct action triggers. | Concurrent BeautifulSoup4 crawl threads and linear compatibility scoring. | Scraped listings and compatibility scores are cached in the **`jobs`** collection. |
+| **Resume Vault** | Drag-and-Drop Ingestion (supporting DOCX & PDF), circular ATS audits, and side-by-side diff highlights. | XML parsing, Gemini customization loop, and ReportLab PDF rendering. | Stores base64 PDF strings, raw texts, parsed JSON structures, and ATS scorecards in the **`resumes`** collection. |
+| **Browser Session State** | Bypasses repeat Naukri logins/captchas dynamically. | Playwright Chromium driver connected via CDP debug ports. | Cookie and localStorage states are preserved in the **`browser_states`** collection. |
+| **Google Drive Integration** | Client credentials file upload and OAuth authentication link generation. | In-memory configuration and callback handler. | Stores raw client secrets JSON and OAuth token dicts under **`configs.constants`**. |
+| **Execution State** | Terminal logger console streaming live runner threads. | Spawns background threads with context variables copied safely. | Uses system temporary folders (`tempfile`) for transient uploads, then purges them. |
 
 ---
 
@@ -179,13 +199,14 @@ The backend web server exposes the following endpoints for the frontend dashboar
 * **Language & Runtime**: Python 3.11+
 * **Web Framework**: FastAPI (REST endpoints, static file mounting, background tasks)
 * **ASGI Server**: Uvicorn (dev server execution)
+* **Database**: MongoDB (user accounts, session tokens, searches & constants config, active job listings, resumes collection, browser states)
 * **Automation & Scraping**: 
   * Playwright Python (headless browser control, stealth page actions)
   * BeautifulSoup4 & Lxml (HTML extraction, job post DOM parsing)
 * **PDF Processing**: 
   * ReportLab (flowables and canvas layout compilation)
   * PyPDF (metadata editing, cryptographic hash scrambling, page reading)
-* **Generative AI**: Google GenAI Deprecated Dep (via `google-generativeai` client for Gemini APIs)
+* **Generative AI**: Google GenAI (via `google-generativeai` client for Gemini APIs)
 * **Data Serialization**: Pydantic v2 (payload and request schemas), PyYAML (searches config parser)
 * **Security & Cryptography**: Cryptography (`cryptography.fernet` symmetric encryption)
 * **Other Utilities**: python-multipart (file upload parsing), email-validator (SMTP inputs check)
@@ -205,62 +226,153 @@ The backend web server exposes the following endpoints for the frontend dashboar
 ---
 
 ## 📋 Prerequisites
+Ensure you have the following installed on your local machine:
 * **Python**: `python >= 3.11` (Python 3.12 recommended)
-* **Package Manager**: `pip` or `uv`
+* **Node.js**: `node >= 18.0` (with `npm` package manager)
+* **MongoDB**: `mongodb >= 4.0` (locally running community edition or connection to MongoDB Atlas)
 * **Web Engine**: Playwright Chromium binary
 
 ---
 
 ## ⚙️ Setup & Running Guide
 
-Here are the complete commands to get the application installed, configured, and running locally.
+Follow these step-by-step instructions to get the application installed and running locally.
 
-### Option A: Using `uv` (Recommended & Faster)
-
-If you have `uv` installed, run these commands from the root directory:
-
+### Step 1: Clone the Repository
+Clone the codebase to your local system and navigate to the project root directory:
 ```bash
-# 1. Navigate to the backend directory
-cd backend
-
-# 2. Install dependencies and create a virtual environment
-uv venv
-uv pip install -e .
-
-# 3. Install Playwright browser binaries
-.venv/bin/playwright install chromium
-
-# 4. Start the application server
-.venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
+git clone <repository_url> job_application_system
+cd job_application_system
 ```
 
----
+### Step 2: Database Setup
+The application persists all configs, sessions, resumes, and cookies in MongoDB.
 
-### Option B: Using standard `venv` and `pip`
+#### Option A: Running MongoDB Locally
+1. Install MongoDB via Homebrew (macOS) or your system package manager:
+   ```bash
+   # macOS
+   brew tap mongodb/brew
+   brew install mongodb-community
+   ```
+2. Start the local MongoDB service:
+   ```bash
+   # macOS
+   brew services start mongodb-community
+   ```
+3. MongoDB will run on `mongodb://localhost:27017/aegis_flow`.
 
-If you are using standard Python tools, run these commands from the root directory:
+#### Option B: Using Remote MongoDB Atlas (Cloud)
+1. Register a free tier account on [MongoDB Atlas](https://www.mongodb.com/).
+2. Create a cluster, set up database credentials, and whitelist your IP.
+3. Retrieve your connection connection URI.
+4. Export the URI in your terminal (or set it in your environment variables):
+   ```bash
+   export MONGODB_URI="mongodb+srv://<username>:<password>@cluster0.xxxx.mongodb.net/aegis_flow?retryWrites=true&w=majority"
+   ```
 
+### Step 3: Frontend Dashboard Setup
+The frontend is a React application built with TypeScript and Tailwind CSS.
+
+1. Navigate to the `frontend` folder:
+   ```bash
+   cd frontend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Compile the production bundle (this compiles the React dashboard and saves it directly to the backend's static file assets folder `backend/static`):
+   ```bash
+   npm run build
+   ```
+4. Navigate back to the root:
+   ```bash
+   cd ..
+   ```
+
+### Step 4: Backend Server Setup & Virtual Environment
+Set up your virtual environment, install backend packages, and configure browser drivers.
+
+1. Navigate to the `backend` folder:
+   ```bash
+   cd backend
+   ```
+
+2. Create a virtual environment and install packages:
+
+   * **Using `uv` (Recommended - 10x faster)**:
+     ```bash
+     uv venv
+     uv pip install -e .
+     ```
+
+   * **Using standard `venv` and `pip`**:
+     ```bash
+     python -m venv .venv
+     source .venv/bin/activate
+     pip install -e .
+     ```
+
+3. Install Playwright browser binaries (installs stealth Chromium packages):
+   ```bash
+   # If using uv
+   .venv/bin/playwright install chromium
+   
+   # If using standard pip/venv
+   playwright install chromium
+   ```
+
+### Step 5: Start the Server
+
+Start the FastAPI application server:
 ```bash
-# 1. Navigate to the backend directory
-cd backend
+# If using uv
+.venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
 
-# 2. Create a virtual environment
-python -m venv .venv
-
-# 3. Activate the virtual environment
-source .venv/bin/activate
-
-# 4. Install the application and dependencies in editable mode
-pip install -e .
-
-# 5. Install Playwright browser binaries
-playwright install chromium
-
-# 6. Start the application server
+# If using standard pip/venv
 uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Once started, open your browser and navigate to: **`http://localhost:8000`**
+### Step 6: Access the Application
+Open your browser and navigate to: **`http://localhost:8000`**
+
+### Alternative: Separated Developer Mode (Frontend Hot-Reloading)
+For active development (with frontend hot-reloading active):
+1. Start the backend server as shown in Step 5 (running on port `8000`).
+2. Open a separate terminal, navigate to the `frontend` directory:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+3. Access the Vite dev server at **`http://localhost:5173`** (API calls will be automatically proxied to port `8000`).
+
+### 🚀 Commands Cheat Sheet (Quick Reference)
+
+#### Running the Dashboard
+* **Integrated Mode (Build & Run)**:
+  ```bash
+  # Build frontend static bundle
+  cd frontend && npm install && npm run build && cd ..
+  # Start backend uvicorn server
+  cd backend && .venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
+  ```
+* **Development Mode (Separated)**:
+  ```bash
+  # Terminal 1: Backend API
+  cd backend && .venv/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload
+  # Terminal 2: Frontend Dev (with Hot-Reloading)
+  cd frontend && npm run dev
+  ```
+
+#### Running CLI Automations (`main.py`)
+* **Test form filling logic**: `cd backend && .venv/bin/python main.py --action test-graph`
+* **Bump Naukri Profile visibility**: `cd backend && .venv/bin/python main.py --action bump-naukri`
+* **Apply to job by ID**: `cd backend && .venv/bin/python main.py --action apply --job-id <job_id>`
+
+#### Running Test Suites
+* **Backend unit tests**: `cd backend && .venv/bin/python -m unittest discover tests`
+* **E2E Integration browser tests**: `cd frontend && npx playwright test`
 
 ---
 
