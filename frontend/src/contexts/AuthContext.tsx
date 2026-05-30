@@ -1,16 +1,12 @@
 /**
- * AuthContext.tsx — Loosely-coupled authentication provider.
+ * AuthContext.tsx — Centrally-managed authentication provider integrated with MongoDB.
  *
  * Manages user registration, login, logout, password reset, and profile updates.
- * All user data is stored in localStorage as an AES-GCM encrypted blob.
- * Session tokens persist in localStorage for auto-login on return visits.
- *
- * Architecture: Swap this provider with an OAuth/Firebase implementation
- * later without touching any consuming components.
+ * Session tokens persist in localStorage/sessionStorage.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { hashPassword, verifyPassword, encryptData, decryptData } from "../utils/crypto";
+import { hashPassword } from "../utils/crypto";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -24,10 +20,10 @@ export interface User {
   avatarImage?: string;
   createdAt: string;
   securityQuestion: string;
-  securityAnswer: string; // hashed
-  securityAnswerSalt: string;
-  passwordHash: string;
-  passwordSalt: string;
+  securityAnswer?: string; // optional on client
+  securityAnswerSalt?: string; // optional on client
+  passwordHash?: string; // optional on client
+  passwordSalt?: string; // optional on client
 }
 
 export type AuthView = "login" | "signup" | "forgot-password";
@@ -63,7 +59,6 @@ interface SignUpData {
 
 // ─── Constants ────────────────────────────────────────────
 
-const USERS_DB_KEY = "aegis_users_db";
 const SESSION_KEY = "aegis_auth_session";
 
 const AVATAR_COLORS = [
@@ -74,28 +69,6 @@ const AVATAR_COLORS = [
   "from-cyan-500 to-blue-600",
   "from-violet-500 to-fuchsia-600",
 ];
-
-// ─── Helpers ──────────────────────────────────────────────
-
-async function loadUsersDB(): Promise<User[]> {
-  const raw = localStorage.getItem(USERS_DB_KEY);
-  if (!raw) return [];
-  try {
-    const decrypted = await decryptData(raw);
-    return JSON.parse(decrypted);
-  } catch {
-    return [];
-  }
-}
-
-async function saveUsersDB(users: User[]): Promise<void> {
-  const encrypted = await encryptData(JSON.stringify(users));
-  localStorage.setItem(USERS_DB_KEY, encrypted);
-}
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
 
 // ─── Context ──────────────────────────────────────────────
 
@@ -118,19 +91,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const sessionUserId = localStorage.getItem(SESSION_KEY);
-        if (sessionUserId) {
-          const users = await loadUsersDB();
-          const found = users.find((u) => u.id === sessionUserId);
-          if (found) {
-            setUser(found);
+        const token = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+        if (token) {
+          const res = await fetch("/api/auth/me", {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              setUser(data.user);
+            } else {
+              localStorage.removeItem(SESSION_KEY);
+              sessionStorage.removeItem(SESSION_KEY);
+            }
           } else {
             localStorage.removeItem(SESSION_KEY);
+            sessionStorage.removeItem(SESSION_KEY);
           }
         }
       } catch (err) {
         console.error("Auth auto-login failed:", err);
         localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
       } finally {
         setIsLoading(false);
       }
@@ -139,65 +123,115 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string, remember: boolean): Promise<{ success: boolean; error?: string }> => {
-      const users = await loadUsersDB();
-      const found = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-      if (!found) {
-        return { success: false, error: "No account found with this email address." };
+      try {
+        // 1. Fetch salt for email
+        const saltRes = await fetch(`/api/auth/salt?email=${encodeURIComponent(email)}`);
+        if (!saltRes.ok) {
+          const errData = await saltRes.json();
+          return { success: false, error: errData.detail || "Failed to fetch login salt." };
+        }
+        const saltData = await saltRes.json();
+        
+        // 2. Compute passwordHash using the salt
+        const { hash: passwordHash } = await hashPassword(password, saltData.passwordSalt);
+        
+        // 3. Post to /api/auth/login
+        const loginRes = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            passwordHash
+          })
+        });
+        
+        if (!loginRes.ok) {
+          const errData = await loginRes.json();
+          return { success: false, error: errData.detail || "Login failed." };
+        }
+        
+        const loginData = await loginRes.json();
+        if (loginData.success && loginData.token) {
+          setUser(loginData.user);
+          if (remember) {
+            localStorage.setItem(SESSION_KEY, loginData.token);
+          } else {
+            sessionStorage.setItem(SESSION_KEY, loginData.token);
+          }
+          return { success: true };
+        }
+        return { success: false, error: "Login response was invalid." };
+      } catch (err: any) {
+        return { success: false, error: err.message || "An unexpected error occurred during login." };
       }
-      const valid = await verifyPassword(password, found.passwordHash, found.passwordSalt);
-      if (!valid) {
-        return { success: false, error: "Incorrect password. Please try again." };
-      }
-      setUser(found);
-      if (remember) {
-        localStorage.setItem(SESSION_KEY, found.id);
-      } else {
-        sessionStorage.setItem(SESSION_KEY, found.id);
-      }
-      return { success: true };
     },
     []
   );
 
   const signup = useCallback(
     async (data: SignUpData): Promise<{ success: boolean; error?: string }> => {
-      const users = await loadUsersDB();
-      const exists = users.some((u) => u.email.toLowerCase() === data.email.toLowerCase());
-      if (exists) {
-        return { success: false, error: "An account with this email already exists." };
+      try {
+        const { hash: passwordHash, salt: passwordSalt } = await hashPassword(data.password);
+        const { hash: securityAnswer, salt: securityAnswerSalt } = await hashPassword(
+          data.securityAnswer.trim().toLowerCase()
+        );
+
+        const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            fullName: data.fullName.trim(),
+            email: data.email.trim().toLowerCase(),
+            phone: "",
+            bio: "",
+            avatarColor,
+            securityQuestion: data.securityQuestion,
+            securityAnswer,
+            securityAnswerSalt,
+            passwordHash,
+            passwordSalt
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          return { success: false, error: errData.detail || "Signup failed." };
+        }
+
+        const signupData = await res.json();
+        if (signupData.success && signupData.token) {
+          setUser(signupData.user);
+          localStorage.setItem(SESSION_KEY, signupData.token);
+          return { success: true };
+        }
+        return { success: false, error: "Signup response was invalid." };
+      } catch (err: any) {
+        return { success: false, error: err.message || "An unexpected error occurred during signup." };
       }
-
-      const { hash: passwordHash, salt: passwordSalt } = await hashPassword(data.password);
-      const { hash: securityAnswer, salt: securityAnswerSalt } = await hashPassword(
-        data.securityAnswer.trim().toLowerCase()
-      );
-
-      const newUser: User = {
-        id: generateId(),
-        fullName: data.fullName.trim(),
-        email: data.email.trim().toLowerCase(),
-        phone: "",
-        bio: "",
-        avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-        createdAt: new Date().toISOString(),
-        securityQuestion: data.securityQuestion,
-        securityAnswer,
-        securityAnswerSalt,
-        passwordHash,
-        passwordSalt,
-      };
-
-      users.push(newUser);
-      await saveUsersDB(users);
-
-      setUser(newUser);
-      localStorage.setItem(SESSION_KEY, newUser.id);
-      return { success: true };
     },
     []
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const token = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+    if (token) {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+      } catch (err) {
+        console.error("Logout API call failed:", err);
+      }
+    }
     setUser(null);
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
@@ -205,12 +239,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const getSecurityQuestion = useCallback((email: string): string | null => {
-    // Synchronous check — users DB is small enough to cache
-    const raw = localStorage.getItem(USERS_DB_KEY);
-    if (!raw) return null;
-    // For the sync path, we need to attempt decryption which is async.
-    // Instead, we return null and let the caller use an async flow.
-    return null; // Handled async in resetPassword
+    // Left as stub for backward compatibility with getSecurityQuestion in interface
+    return null;
   }, []);
 
   const resetPassword = useCallback(
@@ -219,41 +249,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       securityAnswer: string,
       newPassword: string
     ): Promise<{ success: boolean; error?: string }> => {
-      const users = await loadUsersDB();
-      const idx = users.findIndex((u) => u.email.toLowerCase() === email.toLowerCase());
-      if (idx === -1) {
-        return { success: false, error: "No account found with this email." };
-      }
-
-      const target = users[idx];
-
-      // If newPassword is empty, we're just verifying the security answer
-      if (!newPassword) {
-        const valid = await verifyPassword(
+      try {
+        // 1. Get security answer salt
+        const saltRes = await fetch(`/api/auth/security-question?email=${encodeURIComponent(email)}`);
+        if (!saltRes.ok) {
+          const errData = await saltRes.json();
+          return { success: false, error: errData.detail || "Account not found." };
+        }
+        const saltData = await saltRes.json();
+        
+        // 2. Hash the security answer with its salt
+        const { hash: securityAnswerHash } = await hashPassword(
           securityAnswer.trim().toLowerCase(),
-          target.securityAnswer,
-          target.securityAnswerSalt
+          saltData.securityAnswerSalt
         );
-        return valid
-          ? { success: true }
-          : { success: false, error: "Security answer is incorrect." };
+        
+        let newPasswordHash = undefined;
+        let newPasswordSalt = undefined;
+        if (newPassword) {
+          const { hash, salt } = await hashPassword(newPassword);
+          newPasswordHash = hash;
+          newPasswordSalt = salt;
+        }
+        
+        // 3. Post to /api/auth/reset-password
+        const res = await fetch("/api/auth/reset-password", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            securityAnswerHash,
+            newPasswordHash,
+            newPasswordSalt
+          })
+        });
+        
+        if (!res.ok) {
+          const errData = await res.json();
+          return { success: false, error: errData.detail || "Reset failed." };
+        }
+        
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || "An unexpected error occurred during password reset." };
       }
-
-      // Verify answer then update password
-      const answerValid = await verifyPassword(
-        securityAnswer.trim().toLowerCase(),
-        target.securityAnswer,
-        target.securityAnswerSalt
-      );
-      if (!answerValid) {
-        return { success: false, error: "Security answer is incorrect." };
-      }
-
-      const { hash, salt } = await hashPassword(newPassword);
-      users[idx] = { ...target, passwordHash: hash, passwordSalt: salt };
-      await saveUsersDB(users);
-
-      return { success: true };
     },
     []
   );
@@ -266,30 +307,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     ): Promise<void> => {
       if (!user) return;
-      const users = await loadUsersDB();
-      const idx = users.findIndex((u) => u.id === user.id);
-      if (idx === -1) return;
-
-      const { securityQuestion, securityAnswer, ...rest } = updates;
-      const updated = { ...users[idx], ...rest };
-
-      if (updates.email) {
-        updated.email = updates.email.trim().toLowerCase();
+      try {
+        const { securityQuestion, securityAnswer, ...rest } = updates;
+        const payload: any = { ...rest };
+        
+        if (securityQuestion) {
+          payload.securityQuestion = securityQuestion;
+        }
+        
+        if (securityQuestion && securityAnswer) {
+          const { hash, salt } = await hashPassword(securityAnswer.trim().toLowerCase());
+          payload.securityAnswer = hash;
+          payload.securityAnswerSalt = salt;
+        }
+        
+        const token = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+        const res = await fetch("/api/auth/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || "Failed to update profile.");
+        }
+        
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUser(data.user);
+        }
+      } catch (err) {
+        console.error("Profile update failed:", err);
+        throw err;
       }
-
-      if (securityQuestion) {
-        updated.securityQuestion = securityQuestion;
-      }
-
-      if (securityQuestion && securityAnswer) {
-        const { hash, salt } = await hashPassword(securityAnswer.trim().toLowerCase());
-        updated.securityAnswer = hash;
-        updated.securityAnswerSalt = salt;
-      }
-
-      users[idx] = updated;
-      await saveUsersDB(users);
-      setUser(updated);
     },
     [user]
   );
@@ -297,21 +351,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
       if (!user) return { success: false, error: "Not authenticated." };
-
-      const valid = await verifyPassword(currentPassword, user.passwordHash, user.passwordSalt);
-      if (!valid) {
-        return { success: false, error: "Current password is incorrect." };
+      
+      try {
+        const saltRes = await fetch(`/api/auth/salt?email=${encodeURIComponent(user.email)}`);
+        if (!saltRes.ok) {
+          return { success: false, error: "Failed to load authentication salts." };
+        }
+        const saltData = await saltRes.json();
+        
+        const { hash: currentPasswordHash } = await hashPassword(currentPassword, saltData.passwordSalt);
+        const { hash: newPasswordHash, salt: newPasswordSalt } = await hashPassword(newPassword);
+        
+        const token = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+        const res = await fetch("/api/auth/change-password", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            currentPasswordHash,
+            newPasswordHash,
+            newPasswordSalt
+          })
+        });
+        
+        if (!res.ok) {
+          const errData = await res.json();
+          return { success: false, error: errData.detail || "Failed to change password." };
+        }
+        
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || "An unexpected error occurred." };
       }
-
-      const { hash, salt } = await hashPassword(newPassword);
-      const users = await loadUsersDB();
-      const idx = users.findIndex((u) => u.id === user.id);
-      if (idx === -1) return { success: false, error: "User not found." };
-
-      users[idx] = { ...users[idx], passwordHash: hash, passwordSalt: salt };
-      await saveUsersDB(users);
-      setUser(users[idx]);
-      return { success: true };
     },
     [user]
   );
@@ -319,34 +392,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const deleteAccount = useCallback(
     async (password: string): Promise<{ success: boolean; error?: string }> => {
       if (!user) return { success: false, error: "Not authenticated." };
-
-      const valid = await verifyPassword(password, user.passwordHash, user.passwordSalt);
-      if (!valid) {
-        return { success: false, error: "Password is incorrect." };
+      
+      try {
+        const saltRes = await fetch(`/api/auth/salt?email=${encodeURIComponent(user.email)}`);
+        if (!saltRes.ok) {
+          return { success: false, error: "Failed to load authentication salts." };
+        }
+        const saltData = await saltRes.json();
+        
+        const { hash: passwordHash } = await hashPassword(password, saltData.passwordSalt);
+        
+        const token = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+        const res = await fetch("/api/auth/delete-account", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            passwordHash
+          })
+        });
+        
+        if (!res.ok) {
+          const errData = await res.json();
+          return { success: false, error: errData.detail || "Failed to delete account." };
+        }
+        
+        logout();
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || "An unexpected error occurred during account deletion." };
       }
-
-      const users = await loadUsersDB();
-      const filtered = users.filter((u) => u.id !== user.id);
-      await saveUsersDB(filtered);
-      logout();
-      return { success: true };
     },
     [user, logout]
   );
-
-  // Also check sessionStorage for non-persistent sessions
-  useEffect(() => {
-    if (!user && !isLoading) {
-      const sessionId = sessionStorage.getItem(SESSION_KEY);
-      if (sessionId) {
-        (async () => {
-          const users = await loadUsersDB();
-          const found = users.find((u) => u.id === sessionId);
-          if (found) setUser(found);
-        })();
-      }
-    }
-  }, [user, isLoading]);
 
   return (
     <AuthContext.Provider
@@ -374,7 +454,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 // ─── Async Security Question Loader ──────────────────────
 
 export async function loadSecurityQuestionForEmail(email: string): Promise<string | null> {
-  const users = await loadUsersDB();
-  const found = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-  return found ? found.securityQuestion : null;
+  try {
+    const res = await fetch(`/api/auth/security-question?email=${encodeURIComponent(email)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.securityQuestion || null;
+  } catch (err) {
+    console.error("Failed to load security question:", err);
+    return null;
+  }
 }

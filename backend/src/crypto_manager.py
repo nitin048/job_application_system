@@ -52,12 +52,24 @@ def encrypt_value(plaintext: str) -> str:
 
 def decrypt_value(encrypted: str) -> str:
     """
-    Decrypts a prefixed encrypted string back to plaintext.
+    Decrypts a prefixed encrypted string (or deobfuscates an OBF:: string) back to plaintext.
     Returns the original string unchanged if it is not encrypted.
     Returns empty string if decryption fails.
     """
     if not encrypted:
         return ""
+    if isinstance(encrypted, str) and encrypted.startswith("OBF::"):
+        try:
+            import base64
+            import urllib.parse
+            base64_str = encrypted[5:]
+            decoded_bytes = base64.b64decode(base64_str)
+            try:
+                return urllib.parse.unquote(decoded_bytes.decode("utf-8"))
+            except Exception:
+                return decoded_bytes.decode("utf-8")
+        except Exception:
+            return encrypted
     if not encrypted.startswith(ENCRYPTED_PREFIX):
         # Plain text (legacy value) — return as-is
         return encrypted
@@ -70,5 +82,5 @@ def decrypt_value(encrypted: str) -> str:
 
 
 def is_encrypted(value: str) -> bool:
-    """Returns True if the value is an encrypted token."""
-    return isinstance(value, str) and value.startswith(ENCRYPTED_PREFIX)
+    """Returns True if the value is an encrypted or obfuscated token."""
+    return isinstance(value, str) and (value.startswith(ENCRYPTED_PREFIX) or value.startswith("OBF::"))

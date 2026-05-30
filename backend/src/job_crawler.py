@@ -40,15 +40,34 @@ class JobCrawler:
         if cache is None:
             cache = {}
             try:
-                import os
-                cache_path = "data/discovered_jobs.json"
-                if os.path.exists(cache_path):
-                    with open(cache_path, "r", encoding="utf-8") as f:
-                        cached_data = json.load(f)
-                        for job in cached_data:
+                from src.db import get_db, current_user_id_var
+                user_id = current_user_id_var.get()
+                loaded_from_db = False
+                if user_id:
+                    try:
+                        db = get_db()
+                        user_jobs = db["jobs"].find({"user_id": user_id})
+                        for job in user_jobs:
                             if "url" in job:
-                                cache[job["url"]] = job
-                logger.info(f"Loaded existing jobs cache with {len(cache)} jobs.")
+                                job_copy = job.copy()
+                                if "_id" in job_copy:
+                                    del job_copy["_id"]
+                                cache[job["url"]] = job_copy
+                        logger.info(f"Loaded existing jobs cache from MongoDB with {len(cache)} jobs for user {user_id}.")
+                        loaded_from_db = True
+                    except Exception as e:
+                        logger.warning(f"Failed to load jobs from MongoDB cache: {e}")
+                
+                if not loaded_from_db:
+                    import os
+                    cache_path = "data/discovered_jobs.json"
+                    if os.path.exists(cache_path):
+                        with open(cache_path, "r", encoding="utf-8") as f:
+                            cached_data = json.load(f)
+                            for job in cached_data:
+                                if "url" in job:
+                                    cache[job["url"]] = job
+                    logger.info(f"Loaded existing jobs cache from local file with {len(cache)} jobs.")
             except Exception as e:
                 logger.warning(f"Failed to load existing jobs cache: {e}")
 

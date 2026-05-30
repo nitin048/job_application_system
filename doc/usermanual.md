@@ -12,10 +12,10 @@ Welcome to the user manual for the **Autonomous Multi-Platform AI Job Applicatio
    * [C. AI Resume Customizer](#c-ai-resume-customizer-srcresume_tweakerpy)
    * [D. Cryptographic Hash Buster](#d-cryptographic-hash-buster-srcdocument_generatorpy)
    * [E. Stateful Form Filling](#e-stateful-form-filling-srcform_graphpy)
-   * [F. Playwright Evasion Driver](#f-playwright-evasion-driver-srcbrowser_driverpy--srcnaukri_runnerpy)
+   * [F. Playwright Evasion Driver](#f-playwright-evasion-driver-srcbrowser_driverpy)
    * [G. Google Drive Sync](#g-google-drive-sync-srcgdrive_managerpy)
 3. [User Interface & Dashboard Tabs](#3-user-interface--dashboard-tabs)
-4. [System Outputs: What the System Generates](#4-system-outputs-what-the-system-generates)
+4. [System Outputs: Database Collections & Files](#4-system-outputs-database-collections--files)
 5. [Step-by-Step Operations Walkthrough](#5-step-by-step-operations-walkthrough)
 6. [Troubleshooting, Evasions & FAQs](#6-troubleshooting-evasions--faqs)
 
@@ -35,9 +35,9 @@ The system interfaces directly with **Naukri.com** and standard company ATS form
 
 ### A. Job Ingestion & Web Crawler (`src/job_crawler.py`)
 The job crawler discovers active job openings based on your preferences.
-1. **Search Vectors**: The system reads your configured target job titles (e.g., "Full Stack Developer") and locations from `config/searches.yaml`.
-2. **Parallel Scrape Workers**: It launches multiple concurrent background crawler threads (up to 3 in parallel) to scrape Naukri search result lists.
-3. **URL Normalization & Caching**: All found job URLs are normalized (removing trackers, queries, and session IDs). The system compares them against a local flat cache (`data/discovered_jobs.json`) to prevent scanning the same job twice.
+1. **Search Vectors**: The system reads your configured target job titles (e.g., "Full Stack Developer") and locations from MongoDB.
+2. **Parallel Scrape Workers**: It launches multiple concurrent background crawler threads to scrape Naukri search result lists.
+3. **URL Normalization & DB Indexing**: All found job URLs are normalized (removing trackers, queries, and session IDs). The system compares them against the `jobs` collection in MongoDB to prevent scanning or displaying the same job twice.
 4. **Detail Scraping**: For new jobs, the crawler navigates to the detailed page to parse the complete text description using BeautifulSoup4.
 5. **Apply Type Detection**: It inspects interactive elements (buttons, links, forms) to detect whether the job is an **Easy Apply** (can be applied to directly on Naukri) or requires **Manual Intervention** (redirects to an external company careers page).
 6. **Fallback Registry**: If the crawler is blocked by rate-limiting or is run without an active internet connection, it automatically loads a preconfigured registry of mock developer roles at companies like Google, Stripe, and Meta to allow offline testing.
@@ -45,25 +45,25 @@ The job crawler discovers active job openings based on your preferences.
 #### 📊 Crawler Dataflow Visualized:
 ```mermaid
 graph TD
-    A[Start Scan Request] --> B[Read config/searches.yaml]
+    A[Start Scan Request] --> B[Read Search Settings from DB]
     B --> C[Launch Parallel Scraper Workers]
     C -->|Thread 1: Software Engineer| D[Scrape Naukri Search Page]
     C -->|Thread 2: Full Stack Developer| E[Scrape Naukri Search Page]
-    D & E --> F{URL in data/discovered_jobs.json?}
+    D & E --> F{URL in MongoDB jobs collection?}
     F -->|Yes: Duplicate| G[Skip Page Load]
     F -->|No: New Job| H[Scrape Full Job Description]
     H --> I[Detect Application Route]
     I -->|Direct Easy Apply Option| J[Set apply_type = 'Easy Apply']
     I -->|Redirect / Company Site| K[Set apply_type = 'Manual Intervention']
     J & K --> L[Pass to Scoring Engine]
-    L --> M[Save to Discovered Listings Table]
+    L --> M[Save to MongoDB jobs collection]
 ```
 
 ---
 
 ### B. Compatibility Scoring Engine (`src/scoring.py`)
 Every discovered job is scored out of **5.0** (scaled to a percentage) to assess how well your background matches the posting.
-1. **Disqualification Checks**: The engine immediately reviews the company name and job title against `blacklist_companies` and `blacklist_titles` configured in `searches.yaml`. If there is a match, the score is forced to `0.0` and the job is excluded.
+1. **Disqualification Checks**: The engine immediately reviews the company name and job title against `blacklist_companies` and `blacklist_titles` configured in your settings. If there is a match, the score is forced to `0.0` and the job is excluded.
 2. **Weight Allocation Formula**:
    $$\text{Compatibility Score} = 5.0 \times \sum (w_j \cdot s_j)$$
    * **Title Match (25% weight)**: Matches target roles against the job title.
@@ -86,9 +86,9 @@ pie title Compatibility Evaluation Metric Weights
 
 ### C. AI Resume Customizer (`src/resume_tweaker.py`)
 To maximize interview rates, this subsystem tailors a candidate's resume to match a specific job description.
-1. **Gemini Integration**: Sends the candidate's base resume and the target job description to the Google Gemini API. It instructs the model to organically integrate key technologies, methodologies, and bullet points to hit an **85%+ ATS match score** while retaining actual names, dates, and locations.
+1. **Gemini Integration**: Sends the candidate's base resume (retrieved from MongoDB) and the target job description to the Google Gemini API. It instructs the model to organically integrate key technologies, methodologies, and bullet points to hit an **85%+ ATS match score** while retaining actual names, dates, and locations.
 2. **0.1s Local Heuristic Fallback**: If the Gemini API key is missing or quota limits are exceeded (HTTP 429), a local keyword injection engine executes in less than 0.1 seconds. It maps the skills in the job description to the resume sections (summary, skills list, experience bullets) automatically.
-3. **ReportLab PDF Rendering**: Generates a single-column, clean, highly readable, ATS-compliant PDF using ReportLab flowables.
+3. **ReportLab PDF Rendering**: Generates a single-column, clean, highly readable, ATS-compliant PDF using ReportLab flowables to a temporary path, which is instantly base64-encoded and persisted to the MongoDB `resumes` collection.
 
 #### 📊 AI Optimization Loop:
 ```mermaid
@@ -100,8 +100,9 @@ flowchart TD
     C --> F{Successfully parsed JSON?}
     F -->|Yes| G[Set Tailored JSON data]
     F -->|No| D
-    G & E --> H[Render PDF via ReportLab Flowables]
+    G & E --> H[Render PDF via ReportLab Flowables to Temp]
     H --> I[Send to Cryptographic Hash Buster]
+    I --> J[Base64 Encode & Save to MongoDB resumes collection]
 ```
 
 ---
@@ -151,11 +152,11 @@ stateDiagram-v2
 
 ---
 
-### F. Playwright Evasion Driver (`src/browser_driver.py` & `src/naukri_runner.py`)
+### F. Playwright Evasion Driver (`src/browser_driver.py`)
 Handles web automation actions safely.
 1. **Fingerprint Masking**: Injects a stealth evasion script before page load. This overrides `navigator.webdriver` to `undefined`, configures browser plugins, and sets languages to prevent bot-detection libraries (like Cloudflare or Akamai) from blocking the crawler.
 2. **Slow-Motion Execution**: Configures a `slow_mo=150` millisecond delay between interactions to mimic human typing and browsing behavior.
-3. **Session Preservation**: Saves cookies, tokens, and storage state to `data/session_state.json` on exit. This bypasses login challenges and OTP/SMS inputs on subsequent runs.
+3. **Session Preservation**: Saves cookies, tokens, and storage state to MongoDB's `browser_states` collection on exit. This bypasses login challenges and OTP/SMS inputs on subsequent runs.
 4. **Easy Apply Chatbot Navigation**: Evaluates multi-step chatbot apply drawers on Naukri, answers questions (defaults to "Yes/Agree" for checkboxes and inputs credentials like notice periods), and clicks submit.
 
 #### 📊 Automation Security Evasions:
@@ -164,7 +165,7 @@ graph TD
     A[Launch Playwright Browser] --> B[Inject Stealth Init Script]
     B -->|Evade Bot Detectors| C[Set navigator.webdriver = undefined]
     B -->|Mimic Chrome user| D[Mock navigator.plugins & languages]
-    A --> E{data/session_state.json exists?}
+    A --> E{Cookie Session in MongoDB browser_states?}
     E -->|Yes| F[Restore authenticated cookies & storage state]
     E -->|No| G[Perform standard username/password login]
     F & G --> H[Open Target Job Board Link]
@@ -173,28 +174,26 @@ graph TD
 ---
 
 ### G. Google Drive Sync (`src/gdrive_manager.py`)
-If enabled, uploads tailored resumes directly to Google Drive. Once uploaded, the local copy is deleted to maintain a clean local workspace. When applying, the system retrieves the file from Google Drive on-the-fly.
+If enabled, uploads tailored resumes directly to Google Drive. To maintain a stateless local environment, PDFs are read as bytes from MongoDB on-the-fly and uploaded.
 
 #### 📊 Google Drive File Sync Flow:
 ```mermaid
 sequenceDiagram
     participant Tweaker as ResumeTweaker
+    participant DB as MongoDB Database
     participant GDrive as GoogleDriveManager
-    participant Disk as Local Storage Vault
     participant Form as Playwright Form Submitter
 
-    Tweaker->>Disk: Render tailored resume PDF
-    Note over Disk: File generated locally
-    GDrive->>Disk: Fetch local PDF
+    Tweaker->>DB: Save base64-encoded PDF to resumes collection
+    Note over DB: Resume Vaulted in Database
+    GDrive->>DB: Query tailored resume PDF bytes
     GDrive->>GDrive: Upload to Google Drive Folder
-    GDrive->>Disk: Delete local PDF copy
-    Note over Disk: Clean local environment
     
     Note over Form: Application triggered
-    Form->>GDrive: Request PDF via file_id
-    GDrive->>Form: Download to temporary folder
+    Form->>DB: Retrieve PDF bytes from MongoDB resumes collection
+    Form->>Form: Write to tempfile path
     Form->>Form: Upload file to form input
-    Form->>Form: Clean up temporary folder
+    Form->>Form: Delete tempfile path
 ```
 
 ---
@@ -222,22 +221,21 @@ sequenceDiagram
 * **Key Actions**:
   * Edit Candidate Identity parameters (Personal info, Notice period, Expected salary).
   * Define Search Parameters (Target positions, locations, workplace types, and blacklist rules).
-  * Enter API keys (Gemini) and SMTP host details. Saving automatically encrypts passwords on disk.
+  * Enter API keys (Gemini) and SMTP host details. Saving automatically encrypts passwords and credentials, saving them directly into MongoDB.
 
 ---
 
-## 4. System Outputs: What the System Generates
+## 4. System Outputs: Database Collections & Files
 
-When you run the system, it generates the following file assets locally:
+Rather than utilizing persistent local filesystems, the application behaves in a stateless manner, persisting all structured documents and settings to MongoDB under the following collections:
 
-1. **`data/discovered_jobs.json`**: A structured database of scraped job descriptions, compatibility metrics, apply routes, and tailoring histories.
-2. **`data/session_state.json`**: Encrypted cookies and browser storage state to persist logins.
-3. **`data/screenshots/`**:
-   * `apply_before_*.png`: Capture of the job board page prior to application.
-   * `apply_modal_*.png`: Capture of the chatbot/question modal.
-   * `apply_final_*.png` / `apply_error_*.png`: Success or failure confirmation screenshot.
-4. **`assets/{company_name}_resume/`**: Houses generated resume JSON data and customized PDF outputs.
-5. **`config/constants.py`**: Encrypted credentials database containing key/value entries with Fernet symmetric signatures.
+1. **`jobs` Collection**: Holds scraped job descriptions, compatibility metrics, apply routes, and tailoring histories.
+2. **`browser_states` Collection**: Holds active browser cookies, security parameters, and localStorage tokens to maintain persistent logged-in sessions.
+3. **`resumes` Collection**: Holds original and tailored resumes as base64-encoded PDF documents, raw text structures, and optimized JSON representations.
+4. **`configs` Collection**: Holds user profiles, search criteria, locations, blacklists, and encrypted third-party credentials.
+5. **Temporary Files (`tempfile` directory)**: 
+   * Screen captures generated during submissions (`apply_before_*.png`, `apply_final_*.png`) are temporarily stored and deleted, or streamed inline.
+   * Temporary resume PDFs compiled by ReportLab are deleted immediately after base64 encryption or form submission completes.
 
 ---
 
@@ -246,14 +244,14 @@ When you run the system, it generates the following file assets locally:
 ### Walkthrough 1: Initial Setup
 1. Complete the installation steps in the [README.md](file:///Users/nitinpradhan/Learning/job_application_system/README.md).
 2. Start the server and navigate to [http://localhost:8000](http://localhost:8000).
-3. Open the **Secrets & Keys** tab, paste your **Gemini API Key**, and click **Save Settings** to encrypt the key.
+3. Open the **Secrets & Keys** tab, paste your **Gemini API Key**, and click **Save Settings** to encrypt the key in MongoDB.
 4. Upload your master resume in the **Resume Hub** tab to structure your base candidate profile.
 
 ### Walkthrough 2: Refreshing Naukri Search Visibility
 To update the visibility timestamp of your Naukri profile:
 1. Open the dashboard and navigate to the **Job Scanner** tab.
 2. Under **Quick Actions**, click **Refresh Profile Visibility** (or run `python main.py --action bump-naukri` in the terminal).
-3. The browser will launch, log in to Naukri, modify your resume's binary signature, and upload the updated document to refresh your search rankings.
+3. The browser will launch, log in to Naukri (using cookies loaded from MongoDB), compile your resume into a temporary path, modify its binary signature, and upload it to refresh your search rankings.
 
 ### Walkthrough 3: Auto-Applying to Jobs
 1. Go to the **Job Scanner** tab on the dashboard.
@@ -277,10 +275,10 @@ For postings that require application on external company websites:
 * **A**: If a captcha is detected during Naukri login, the browser driver will pause execution. If headed mode is enabled, you can complete the challenge manually in the browser window, and the automation script will resume once login succeeds.
 
 #### Q: Why is my compatibility score low for some jobs?
-* **A**: The compatibility score depends on the preferences set in `searches.yaml`. Check that the locations, technologies, and years of experience configured in your settings align with the target job descriptions.
+* **A**: The compatibility score depends on the preferences set in your dashboard configuration. Check that the locations, technologies, and years of experience configured in your settings align with the target job descriptions.
 
 #### Q: What happens if the Gemini API quota is exhausted?
 * **A**: The system will automatically fallback to local keyword heuristics. You will still receive an optimized resume, though it will rely on direct term injection rather than full-context rewriting.
 
-#### Q: Is my password safe on disk?
-* **A**: Yes. The system encrypts all passwords using symmetric Fernet keys. Plaintext credentials are decrypted in memory only when logging in.
+#### Q: Is my password safe in the database?
+* **A**: Yes. The system encrypts all passwords using symmetric Fernet keys prior to writing them to the MongoDB `configs` collection. Plaintext credentials are decrypted in memory only when logging in.

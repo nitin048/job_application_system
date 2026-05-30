@@ -30,29 +30,121 @@ app = FastAPI(title="Job Application System API")
 
 import contextvars
 import urllib.parse
+import datetime
+import time
 from config.constants import session_config_var as consts_session_var
 from src.config_loader import session_config_var as loader_session_var
+from src.db import get_db, current_user_id_var
+
+def load_jobs_list(request: Request = None, user_id: str = None) -> list:
+    if not user_id and request:
+        user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        user_id = current_user_id_var.get()
+        
+    if user_id:
+        try:
+            db = get_db()
+            user_jobs = db["jobs"].find({"user_id": user_id})
+            clean_jobs = []
+            for job in user_jobs:
+                job_copy = job.copy()
+                if "_id" in job_copy:
+                    del job_copy["_id"]
+                clean_jobs.append(job_copy)
+            return clean_jobs
+        except Exception as e:
+            logger.error(f"Failed to load jobs from MongoDB: {e}")
+            
+    global jobs_cache
+    if jobs_cache:
+        return jobs_cache
+        
+    jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
+    if jobs_json_path.exists():
+        try:
+            with open(jobs_json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return jobs_cache
+
+def save_jobs_list(jobs: list, request: Request = None, user_id: str = None):
+    if not user_id and request:
+        user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        user_id = current_user_id_var.get()
+        
+    if user_id:
+        try:
+            db = get_db()
+            db["jobs"].delete_many({"user_id": user_id})
+            if jobs:
+                # Ensure user_id is on every job doc
+                for job in jobs:
+                    job["user_id"] = user_id
+                db["jobs"].insert_many(jobs)
+            return
+        except Exception as e:
+            logger.error(f"Failed to save jobs to MongoDB: {e}")
+            
+    global jobs_cache
+    jobs_cache = jobs
+    jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
+    try:
+        with open(jobs_json_path, "w", encoding="utf-8") as f:
+            json.dump(jobs, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to write discovered_jobs.json: {e}")
 
 @app.middleware("http")
 async def session_config_middleware(request: Request, call_next):
-    # Retrieve header or query param
-    session_config_header = request.headers.get("X-Session-Config")
-    session_config_param = request.query_params.get("config")
+    # Initialize request state
+    request.state.user_id = None
+    request.state.email = None
     
     session_config = None
-    raw_config = session_config_header or session_config_param
     
-    if raw_config:
+    # Try Authorization header first
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]
         try:
-            try:
-                session_config = json.loads(raw_config)
-            except json.JSONDecodeError:
-                decoded = urllib.parse.unquote(raw_config)
-                session_config = json.loads(decoded)
+            db = get_db()
+            session = db["sessions"].find_one({"token": token})
+            if session:
+                user_id = session["user_id"]
+                request.state.user_id = user_id
+                request.state.email = session.get("email")
+                
+                # Fetch user settings config
+                user_config = db["configs"].find_one({"user_id": user_id})
+                if user_config:
+                    session_config = {
+                        "constants": user_config.get("constants", {}),
+                        "searches": user_config.get("searches", {}),
+                        "user_id": user_id
+                    }
         except Exception:
             pass
-            
-    # Set the ContextVar tokens
+
+    # Fallback to header/param config
+    if not session_config:
+        session_config_header = request.headers.get("X-Session-Config")
+        session_config_param = request.query_params.get("config")
+        raw_config = session_config_header or session_config_param
+        if raw_config:
+            try:
+                try:
+                    session_config = json.loads(raw_config)
+                except json.JSONDecodeError:
+                    decoded = urllib.parse.unquote(raw_config)
+                    session_config = json.loads(decoded)
+            except Exception:
+                pass
+                
+    # Bind ContextVars and set user ID
+    token_user = current_user_id_var.set(request.state.user_id)
     token1 = consts_session_var.set(session_config)
     token2 = loader_session_var.set(session_config)
     
@@ -60,6 +152,7 @@ async def session_config_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
     finally:
+        current_user_id_var.reset(token_user)
         consts_session_var.reset(token1)
         loader_session_var.reset(token2)
 
@@ -133,13 +226,10 @@ jobs_cache = []
 is_scanning = False
 
 # Load jobs cache from disk on startup if it exists
-jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-if jobs_json_path.exists():
-    try:
-        with open(jobs_json_path, "r", encoding="utf-8") as f:
-            jobs_cache = json.load(f)
-    except Exception:
-        jobs_cache = []
+try:
+    jobs_cache = load_jobs_list()
+except Exception:
+    jobs_cache = []
 
 import uuid
 import tempfile
@@ -231,12 +321,285 @@ def clear_errors():
             raise HTTPException(status_code=500, detail=f"Failed to clear error log: {e}")
     return {"status": "success", "message": "Runtime error logs cleared."}
 
+class SignUpPayload(BaseModel):
+    fullName: str
+    email: str
+    phone: str = ""
+    bio: str = ""
+    avatarColor: str = ""
+    securityQuestion: str
+    securityAnswer: str
+    securityAnswerSalt: str
+    passwordHash: str
+    passwordSalt: str
+
+class LoginPayload(BaseModel):
+    email: str
+    passwordHash: str
+
+class ResetPasswordPayload(BaseModel):
+    email: str
+    securityAnswerHash: str
+    newPasswordHash: Optional[str] = None
+    newPasswordSalt: Optional[str] = None
+
+class ProfileUpdatePayload(BaseModel):
+    fullName: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    bio: Optional[str] = None
+    avatarImage: Optional[str] = None
+    securityQuestion: Optional[str] = None
+    securityAnswer: Optional[str] = None
+    securityAnswerSalt: Optional[str] = None
+
+class ChangePasswordPayload(BaseModel):
+    currentPasswordHash: str
+    newPasswordHash: str
+    newPasswordSalt: str
+
+class DeleteAccountPayload(BaseModel):
+    passwordHash: str
+
+# ─── Auth Endpoints ────────────────────────────────────────
+
+@app.get("/api/auth/salt")
+def get_auth_salt(email: str):
+    db = get_db()
+    user = db["users"].find_one({"email": email.lower().strip()})
+    if user:
+        return {
+            "success": True,
+            "passwordSalt": user.get("passwordSalt"),
+            "securityAnswerSalt": user.get("securityAnswerSalt")
+        }
+    return {
+        "success": False,
+        "passwordSalt": "dummy_salt_value_12345",
+        "securityAnswerSalt": "dummy_salt_value_12345"
+    }
+
+@app.post("/api/auth/signup")
+def auth_signup(payload: SignUpPayload):
+    db = get_db()
+    existing = db["users"].find_one({"email": payload.email.lower().strip()})
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+        
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "id": user_id,
+        "fullName": payload.fullName.strip(),
+        "email": payload.email.lower().strip(),
+        "phone": payload.phone,
+        "bio": payload.bio,
+        "avatarColor": payload.avatarColor,
+        "createdAt": datetime.datetime.utcnow().isoformat(),
+        "securityQuestion": payload.securityQuestion,
+        "securityAnswer": payload.securityAnswer,
+        "securityAnswerSalt": payload.securityAnswerSalt,
+        "passwordHash": payload.passwordHash,
+        "passwordSalt": payload.passwordSalt
+    }
+    db["users"].insert_one(user_doc)
+    
+    # Initialize default config in MongoDB for the new user
+    try:
+        default_conf = get_config(request=None)
+        db["configs"].insert_one({
+            "user_id": user_id,
+            "searches": default_conf.get("searches", {}),
+            "constants": default_conf.get("constants", {})
+        })
+        logger.info(f"Initialized default configurations in database for new user: {user_id}")
+    except Exception as e:
+        logger.warning(f"Could not initialize default config for new user {user_id}: {e}")
+        
+    # Generate session token
+    token = str(uuid.uuid4())
+    db["sessions"].insert_one({
+        "token": token,
+        "user_id": user_id,
+        "email": user_doc["email"]
+    })
+    
+    user_resp = user_doc.copy()
+    for field in ["_id", "passwordHash", "passwordSalt", "securityAnswer", "securityAnswerSalt"]:
+        user_resp.pop(field, None)
+        
+    return {
+        "success": True,
+        "token": token,
+        "user": user_resp
+    }
+
+@app.post("/api/auth/login")
+def auth_login(payload: LoginPayload):
+    db = get_db()
+    user = db["users"].find_one({"email": payload.email.lower().strip()})
+    if not user:
+        raise HTTPException(status_code=400, detail="No account found with this email address.")
+        
+    if user.get("passwordHash") != payload.passwordHash:
+        raise HTTPException(status_code=400, detail="Incorrect password. Please try again.")
+        
+    token = str(uuid.uuid4())
+    db["sessions"].insert_one({
+        "token": token,
+        "user_id": user["id"],
+        "email": user["email"]
+    })
+    
+    user_resp = user.copy()
+    for field in ["_id", "passwordHash", "passwordSalt", "securityAnswer", "securityAnswerSalt"]:
+        user_resp.pop(field, None)
+        
+    return {
+        "success": True,
+        "token": token,
+        "user": user_resp
+    }
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        db = get_db()
+        db["sessions"].delete_one({"token": token})
+    return {"success": True}
+
+@app.get("/api/auth/security-question")
+def get_security_question(email: str):
+    db = get_db()
+    user = db["users"].find_one({"email": email.lower().strip()})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+    return {
+        "securityQuestion": user.get("securityQuestion"),
+        "securityAnswerSalt": user.get("securityAnswerSalt")
+    }
+
+@app.post("/api/auth/reset-password")
+def auth_reset_password(payload: ResetPasswordPayload):
+    db = get_db()
+    user = db["users"].find_one({"email": payload.email.lower().strip()})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+        
+    if user.get("securityAnswer") != payload.securityAnswerHash:
+        raise HTTPException(status_code=400, detail="Security answer is incorrect.")
+        
+    if payload.newPasswordHash and payload.newPasswordSalt:
+        db["users"].update_one(
+            {"id": user["id"]},
+            {"$set": {
+                "passwordHash": payload.newPasswordHash,
+                "passwordSalt": payload.newPasswordSalt
+            }}
+        )
+        
+    return {"success": True}
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    db = get_db()
+    user = db["users"].find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=401, detail="User session invalid.")
+    user_resp = user.copy()
+    for field in ["_id", "passwordHash", "passwordSalt", "securityAnswer", "securityAnswerSalt"]:
+        user_resp.pop(field, None)
+    return {"success": True, "user": user_resp}
+
+@app.put("/api/auth/profile")
+def auth_update_profile(payload: ProfileUpdatePayload, request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    db = get_db()
+    updates = {}
+    if payload.fullName is not None:
+        updates["fullName"] = payload.fullName
+    if payload.email is not None:
+        updates["email"] = payload.email.lower().strip()
+    if payload.phone is not None:
+        updates["phone"] = payload.phone
+    if payload.bio is not None:
+        updates["bio"] = payload.bio
+    if payload.avatarImage is not None:
+        updates["avatarImage"] = payload.avatarImage
+    if payload.securityQuestion is not None:
+        updates["securityQuestion"] = payload.securityQuestion
+    if payload.securityAnswer is not None and payload.securityAnswerSalt is not None:
+        updates["securityAnswer"] = payload.securityAnswer
+        updates["securityAnswerSalt"] = payload.securityAnswerSalt
+        
+    if updates:
+        db["users"].update_one({"id": user_id}, {"$set": updates})
+        
+    user = db["users"].find_one({"id": user_id})
+    user_resp = user.copy()
+    for field in ["_id", "passwordHash", "passwordSalt", "securityAnswer", "securityAnswerSalt"]:
+        user_resp.pop(field, None)
+    return {"success": True, "user": user_resp}
+
+@app.put("/api/auth/change-password")
+def auth_change_password(payload: ChangePasswordPayload, request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    db = get_db()
+    user = db["users"].find_one({"id": user_id})
+    if not user or user.get("passwordHash") != payload.currentPasswordHash:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+        
+    db["users"].update_one(
+        {"id": user_id},
+        {"$set": {
+            "passwordHash": payload.newPasswordHash,
+            "passwordSalt": payload.newPasswordSalt
+        }}
+    )
+    return {"success": True}
+
+@app.delete("/api/auth/delete-account")
+def auth_delete_account(payload: DeleteAccountPayload, request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    db = get_db()
+    user = db["users"].find_one({"id": user_id})
+    if not user or user.get("passwordHash") != payload.passwordHash:
+        raise HTTPException(status_code=400, detail="Password is incorrect.")
+        
+    db["sessions"].delete_many({"user_id": user_id})
+    db["configs"].delete_many({"user_id": user_id})
+    db["jobs"].delete_many({"user_id": user_id})
+    db["users"].delete_one({"id": user_id})
+    return {"success": True}
+
+# ─── Config Endpoints ──────────────────────────────────────
+
 @app.get("/api/config")
-def get_config():
-    """
-    Retrieves values from config/searches.yaml and config/constants.py.
-    """
-    # 1. Read searches.yaml
+def get_config(request: Request = None):
+    user_id = getattr(request.state, "user_id", None) if request else None
+    if user_id:
+        try:
+            db = get_db()
+            user_config = db["configs"].find_one({"user_id": user_id})
+            if user_config:
+                return {
+                    "searches": user_config.get("searches", {}),
+                    "constants": user_config.get("constants", {})
+                }
+        except Exception:
+            pass
+
+    # Fallback to local files
     yaml_path = ROOT_DIR / "config" / "searches.yaml"
     if not yaml_path.exists():
         raise HTTPException(status_code=404, detail="searches.yaml not found")
@@ -244,15 +607,11 @@ def get_config():
     with open(yaml_path, "r", encoding="utf-8") as f:
         yaml_data = yaml.safe_load(f)
 
-    # 2. Read constants.py by importing or parsing
-    # To avoid cache issues, we read it as plain text and parse basic variables
     constants_path = ROOT_DIR / "config" / "constants.py"
     constants_data = {}
-    # Sensitive keys that are encrypted at rest — must be decrypted before returning to UI
     SENSITIVE_KEYS = {"PASSWORD", "GEMINI_API_KEY", "SOLVER_API_KEY", "SMTP_PASSWORD"}
     if constants_path.exists():
         content = constants_path.read_text(encoding="utf-8")
-        # Direct regex match to parse configuration keys safely without eval
         keys = [
             "RESUME_PATH", "MODIFIED_RESUME_PATH", "USERNAME", "PASSWORD", 
             "UPDATE_PDF_HASH", "GEMINI_API_KEY", "SOLVER_API_KEY", 
@@ -265,7 +624,6 @@ def get_config():
             match = re.search(rf'^{key}\s*=\s*(.*?)\s*$', content, re.MULTILINE)
             if match:
                 val = match.group(1).strip()
-                # Check for os.getenv wrapper: os.getenv("KEY", "DEFAULT")
                 env_match = re.search(r'os\.getenv\(\s*["\']\w+["\']\s*,\s*(r?["\'].*?["\'])\s*\)', val)
                 if env_match:
                     val = env_match.group(1).strip()
@@ -279,7 +637,6 @@ def get_config():
                     val = val.split("==")[0].strip()
                     is_boolean_comparison = True
 
-                # Strip quotes or parse booleans
                 if val.startswith(('"', "'")) and val.endswith(('"', "'")):
                     val = val[1:-1]
                 elif val.startswith("r") and val[1] in ('"', "'") and val.endswith(('"', "'")):
@@ -294,7 +651,6 @@ def get_config():
                 if is_boolean_comparison:
                     val = (val == "True" or val is True)
 
-                # Decrypt sensitive keys before sending to UI
                 if key in SENSITIVE_KEYS and isinstance(val, str) and is_encrypted(val):
                     val = decrypt_value(val)
 
@@ -310,11 +666,23 @@ class ConfigUpdateRequest(BaseModel):
     constants: Dict[str, Any]
 
 @app.post("/api/config")
-def update_config(payload: ConfigUpdateRequest):
-    """
-    Simulates configuration update. Since configuration is session-isolated
-    and managed in browser sessionStorage, we bypass physical disk writes.
-    """
+def update_config(payload: ConfigUpdateRequest, request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        try:
+            db = get_db()
+            db["configs"].update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "searches": payload.searches,
+                    "constants": payload.constants
+                }},
+                upsert=True
+            )
+            return {"status": "success", "message": "Configurations updated successfully in database."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to update config in database: {e}")
+            
     return {"status": "success", "message": "Configurations simulated update success"}
 
 class RunRequest(BaseModel):
@@ -342,12 +710,12 @@ def get_logs():
     return {"logs": "".join(log_buffer)}
 
 @app.get("/api/jobs")
-def get_jobs():
+def get_jobs(request: Request = None):
     """
     Returns the list of discovered and compatibility-scored job listings.
     """
-    global jobs_cache
-    return {"jobs": jobs_cache}
+    jobs = load_jobs_list(request)
+    return {"jobs": jobs}
 
 @app.post("/api/validate-gemini")
 def validate_gemini():
@@ -380,28 +748,20 @@ def validate_gemini():
         raise HTTPException(status_code=500, detail=f"Gemini API check failed: {str(e)}")
 
 @app.post("/api/jobs/purge")
-def purge_jobs():
+def purge_jobs(request: Request = None):
     """
     Clears the discovered jobs database cache and deletes the file.
     """
-    global jobs_cache
-    jobs_cache = []
-    
-    jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-    if jobs_json_path.exists():
-        try:
-            jobs_json_path.unlink()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Could not delete cache file: {str(e)}")
-            
+    save_jobs_list([], request=request)
     return {"status": "success", "message": "Discovered jobs database purged successfully."}
 
-def run_scan_in_background(session_config: dict | None):
+def run_scan_in_background(session_config: dict | None, user_id: str | None):
     # Set context variables in background thread context
+    token_user = current_user_id_var.set(user_id)
     token1 = consts_session_var.set(session_config)
     token2 = loader_session_var.set(session_config)
     
-    global is_scanning, jobs_cache
+    global is_scanning
     is_scanning = True
     
     import logging
@@ -409,44 +769,26 @@ def run_scan_in_background(session_config: dict | None):
     logger = logging.getLogger("src.server")
     logger.info("Background job scan started.")
     
-    jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-    jobs_json_path.parent.mkdir(parents=True, exist_ok=True)
-    
     # 1. Load existing cache first, to keep memory cache for crawler
     cache = {}
-    if jobs_json_path.exists():
-        try:
-            with open(jobs_json_path, "r", encoding="utf-8") as f:
-                cached_data = json.load(f)
-                for job in cached_data:
-                    if "url" in job:
-                        cache[job["url"]] = job
-            logger.info(f"Pre-loaded {len(cache)} jobs into crawling cache.")
-        except Exception as e:
-            logger.warning(f"Error reading cache: {e}")
+    cached_data = load_jobs_list(user_id=user_id)
+    for job in cached_data:
+        if "url" in job:
+            cache[job["url"]] = job
+    logger.info(f"Pre-loaded {len(cache)} jobs into crawling cache.")
             
-    # 2. Reset memory cache and write empty list to disk for progressive binding
-    jobs_cache = []
-    try:
-        with open(jobs_json_path, "w", encoding="utf-8") as f:
-            json.dump([], f)
-    except Exception as e:
-        logger.warning(f"Error resetting jobs file: {e}")
+    # 2. Reset database/disk cache
+    save_jobs_list([], user_id=user_id)
         
     write_lock = threading.Lock()
     
     def on_job_found(job):
-        global jobs_cache
         with write_lock:
-            # Check for duplicates in memory cache
-            if not any(j["id"] == job["id"] for j in jobs_cache):
-                jobs_cache.append(job)
-                jobs_cache.sort(key=lambda x: x["compatibility"], reverse=True)
-                try:
-                    with open(jobs_json_path, "w", encoding="utf-8") as f:
-                        json.dump(jobs_cache, f, indent=2)
-                except Exception as disk_err:
-                    logger.warning(f"Error writing job progressively to disk: {disk_err}")
+            current_jobs = load_jobs_list(user_id=user_id)
+            if not any(j["id"] == job["id"] for j in current_jobs):
+                current_jobs.append(job)
+                current_jobs.sort(key=lambda x: x["compatibility"], reverse=True)
+                save_jobs_list(current_jobs, user_id=user_id)
 
     try:
         yaml_path = ROOT_DIR / "config" / "searches.yaml"
@@ -455,16 +797,18 @@ def run_scan_in_background(session_config: dict | None):
             crawler = JobCrawler(config)
             # Pass the progressive callback and loaded cache
             crawler.scan_jobs(on_job_found_cb=on_job_found, cache=cache)
-            logger.info(f"Background job scan completed. Found {len(jobs_cache)} jobs in total.")
+            final_jobs = load_jobs_list(user_id=user_id)
+            logger.info(f"Background job scan completed. Found {len(final_jobs)} jobs in total.")
     except Exception as e:
         logger.error(f"Background scan error: {e}")
     finally:
         consts_session_var.reset(token1)
         loader_session_var.reset(token2)
+        current_user_id_var.reset(token_user)
         is_scanning = False
 
 @app.post("/api/jobs/scan")
-def scan_jobs(background_tasks: BackgroundTasks):
+def scan_jobs(background_tasks: BackgroundTasks, request: Request = None):
     """
     Triggers job discovery scanner in the background.
     """
@@ -473,35 +817,30 @@ def scan_jobs(background_tasks: BackgroundTasks):
         return {"status": "scanning", "message": "A job scan is already running."}
     
     active_config = loader_session_var.get()
-    background_tasks.add_task(run_scan_in_background, active_config)
+    user_id = getattr(request.state, "user_id", None)
+    background_tasks.add_task(run_scan_in_background, active_config, user_id)
     return {"status": "started", "message": "Job scan started in the background."}
 
 @app.get("/api/jobs/scan/status")
-def get_scan_status():
-    global is_scanning, jobs_cache
+def get_scan_status(request: Request = None):
+    global is_scanning
+    jobs = load_jobs_list(request)
     return {
         "is_scanning": is_scanning,
-        "count": len(jobs_cache)
+        "count": len(jobs)
     }
 
 class JobTailoringRequest(BaseModel):
     resume_data: Optional[Dict[str, Any]] = None
 
 @app.post("/api/jobs/{job_id}/tailor")
-def tailor_job_resume(job_id: str, payload: Optional[JobTailoringRequest] = None):
+def tailor_job_resume(job_id: str, request: Request = None, payload: Optional[JobTailoringRequest] = None):
     """
     Tailors the candidate's resume for the specified job using the ResumeTweaker.
     """
-    global jobs_cache
-    # Match the job from cache
-    job = next((j for j in jobs_cache if j["id"] == job_id), None)
-    if not job:
-        # Check from file
-        jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-        if jobs_json_path.exists():
-            with open(jobs_json_path, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-                job = next((j for j in loaded if j["id"] == job_id), None)
+    jobs = load_jobs_list(request)
+    # Match the job from loaded list
+    job = next((j for j in jobs if j["id"] == job_id), None)
                 
     if not job:
         raise HTTPException(status_code=404, detail=f"Job listing '{job_id}' not found.")
@@ -514,6 +853,17 @@ def tailor_job_resume(job_id: str, payload: Optional[JobTailoringRequest] = None
     tweaker = ResumeTweaker(config)
     
     resume_data = payload.resume_data if payload else None
+    
+    if not resume_data and request:
+        user_id = getattr(request.state, "user_id", None)
+        if user_id:
+            try:
+                db = get_db()
+                res_doc = db["resumes"].find_one({"user_id": user_id, "type": "original"})
+                if res_doc and "structured_data" in res_doc:
+                    resume_data = res_doc["structured_data"]
+            except Exception as e:
+                logger.warning(f"Could not load original structured resume data from MongoDB for tailoring: {e}")
     
     try:
         tailored_path = tweaker.tailor_resume(
@@ -548,7 +898,7 @@ def tailor_job_resume(job_id: str, payload: Optional[JobTailoringRequest] = None
         gdrive_error = None
         if sync_enabled:
             try:
-                manager = GoogleDriveManager(
+                manager = get_gdrive_manager(user_id, config) if user_id else GoogleDriveManager(
                     client_secrets_path=secrets_path,
                     token_path=token_path,
                     config=config
@@ -569,9 +919,7 @@ def tailor_job_resume(job_id: str, payload: Optional[JobTailoringRequest] = None
                 print(f"Failed to sync tailored resume to Google Drive: {e}")
         
         # Save cache changes
-        jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-        with open(jobs_json_path, "w", encoding="utf-8") as f:
-            json.dump(jobs_cache, f, indent=2)
+        save_jobs_list(jobs, request)
             
         res_data = {
             "status": "success",
@@ -581,6 +929,7 @@ def tailor_job_resume(job_id: str, payload: Optional[JobTailoringRequest] = None
         }
         if gdrive_link:
             res_data["gdrive_link"] = gdrive_link
+        if gdrive_file_id:
             res_data["gdrive_file_id"] = gdrive_file_id
         if gdrive_error:
             res_data["gdrive_error"] = gdrive_error
@@ -606,7 +955,8 @@ def _ensure_tailored_resume_locally(job: dict, tailored_path: str) -> str:
     # 1. Try to download from Google Drive
     if sync_enabled and gdrive_file_id:
         try:
-            manager = GoogleDriveManager(
+            user_id = current_user_id_var.get()
+            manager = get_gdrive_manager(user_id, config) if user_id else GoogleDriveManager(
                 client_secrets_path=secrets_path,
                 token_path=token_path,
                 config=config
@@ -637,28 +987,49 @@ def _ensure_tailored_resume_locally(job: dict, tailored_path: str) -> str:
             
     # 3. Fallback to tailoring from scratch
     print("Re-running resume tailoring from scratch...")
+    
+    # Try to load structured resume from MongoDB
+    resume_data = None
+    user_id = current_user_id_var.get()
+    if user_id:
+        try:
+            db = get_db()
+            res_doc = db["resumes"].find_one({"user_id": user_id, "type": "original"})
+            if res_doc and "structured_data" in res_doc:
+                resume_data = res_doc["structured_data"]
+        except Exception:
+            pass
+            
     actual_path = tweaker.tailor_resume(
         job_title=job["title"],
         job_company=job["company"],
-        job_desc=job["description"]
+        job_desc=job["description"],
+        resume_data=resume_data
     )
     job["tailored_pdf_path"] = actual_path
     if hasattr(tweaker, "last_tailored_data") and tweaker.last_tailored_data:
         job["tailored_data"] = tweaker.last_tailored_data
         
-    # Save cache changes
-    jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-    with open(jobs_json_path, "w", encoding="utf-8") as f:
-        json.dump(jobs_cache, f, indent=2)
-        
     return actual_path
 
 @app.get("/api/jobs/{job_id}/tailor/view")
-def view_tailored_resume(job_id: str, path: str = None):
+def view_tailored_resume(job_id: str, request: Request = None, path: str = None):
     """
     Returns the tailored resume PDF inline in the browser.
     """
     if path:
+        try:
+            db = get_db()
+            doc = db["resumes"].find_one({"id": path})
+            if doc and "pdf_data" in doc:
+                import base64
+                pdf_bytes = base64.b64decode(doc["pdf_data"])
+                from fastapi import Response
+                return Response(content=pdf_bytes, media_type="application/pdf")
+        except Exception as e:
+            logger.warning(f"Could not load PDF from database: {e}")
+
+        # Local fallback if not found in db
         target = Path(path)
         try:
             target.relative_to(ROOT_DIR / "assets")
@@ -666,16 +1037,10 @@ def view_tailored_resume(job_id: str, path: str = None):
             raise HTTPException(status_code=400, detail="Directory traversal attempt detected.")
         if target.exists() and target.is_file():
             return FileResponse(path=str(target), media_type="application/pdf")
-        raise HTTPException(status_code=404, detail="File not found.")
+        raise HTTPException(status_code=404, detail="File not found or invalid path ID.")
 
-    global jobs_cache
-    job = next((j for j in jobs_cache if j["id"] == job_id), None)
-    if not job:
-        jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-        if jobs_json_path.exists():
-            with open(jobs_json_path, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-                job = next((j for j in loaded if j["id"] == job_id), None)
+    jobs = load_jobs_list(request)
+    job = next((j for j in jobs if j["id"] == job_id), None)
                 
     if not job:
         raise HTTPException(status_code=404, detail="Job listing not found.")
@@ -686,14 +1051,29 @@ def view_tailored_resume(job_id: str, path: str = None):
         tailored_path = MODIFIED_RESUME_PATH or str(ROOT_DIR / "data" / "Modified_Resume.pdf")
         
     local_path = _ensure_tailored_resume_locally(job, tailored_path)
+    save_jobs_list(jobs, request)
     return FileResponse(path=local_path, media_type="application/pdf")
 
 @app.get("/api/jobs/{job_id}/tailor/download")
-def download_tailored_resume(job_id: str, path: str = None, filename: str = None):
+def download_tailored_resume(job_id: str, request: Request = None, path: str = None, filename: str = None):
     """
     Downloads the tailored resume PDF file.
     """
     if path:
+        try:
+            db = get_db()
+            doc = db["resumes"].find_one({"id": path})
+            if doc and "pdf_data" in doc:
+                import base64
+                pdf_bytes = base64.b64decode(doc["pdf_data"])
+                from fastapi import Response
+                fn = filename or doc.get("filename", "resume.pdf")
+                headers = {"Content-Disposition": f"attachment; filename={fn}"}
+                return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+        except Exception as e:
+            logger.warning(f"Could not load PDF from database for download: {e}")
+
+        # Local disk fallback
         target = Path(path)
         try:
             target.relative_to(ROOT_DIR / "assets")
@@ -703,16 +1083,9 @@ def download_tailored_resume(job_id: str, path: str = None, filename: str = None
             return FileResponse(path=str(target), media_type="application/pdf", filename=filename or target.name)
         raise HTTPException(status_code=404, detail="File not found.")
 
-    global jobs_cache
-    # Match job from cache
-    job = next((j for j in jobs_cache if j["id"] == job_id), None)
-    if not job:
-        # Check from file
-        jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-        if jobs_json_path.exists():
-            with open(jobs_json_path, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-                job = next((j for j in loaded if j["id"] == job_id), None)
+    jobs = load_jobs_list(request)
+    # Match job from loaded list
+    job = next((j for j in jobs if j["id"] == job_id), None)
                 
     if not job:
         raise HTTPException(status_code=404, detail="Job listing not found.")
@@ -723,6 +1096,7 @@ def download_tailored_resume(job_id: str, path: str = None, filename: str = None
         tailored_path = MODIFIED_RESUME_PATH or str(ROOT_DIR / "data" / "Modified_Resume.pdf")
         
     local_path = _ensure_tailored_resume_locally(job, tailored_path)
+    save_jobs_list(jobs, request)
     fn = f"Nitin_Pradhan_Resume_{job['company'].replace(' ', '_')}.pdf"
     return FileResponse(
         path=local_path,
@@ -740,18 +1114,12 @@ def get_original_resume():
     return NITIN_RESUME_TEMPLATE
 
 @app.get("/api/jobs/{job_id}/tailored_data")
-def get_tailored_data(job_id: str):
+def get_tailored_data(job_id: str, request: Request = None):
     """
     Returns the tailored resume JSON data for the job, generating it if it doesn't exist.
     """
-    global jobs_cache
-    job = next((j for j in jobs_cache if j["id"] == job_id), None)
-    if not job:
-        jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-        if jobs_json_path.exists():
-            with open(jobs_json_path, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-                job = next((j for j in loaded if j["id"] == job_id), None)
+    jobs = load_jobs_list(request)
+    job = next((j for j in jobs if j["id"] == job_id), None)
                 
     if not job:
         raise HTTPException(status_code=404, detail="Job listing not found.")
@@ -762,19 +1130,28 @@ def get_tailored_data(job_id: str):
         yaml_path = ROOT_DIR / "config" / "searches.yaml"
         config = load_config(yaml_path)
         tweaker = ResumeTweaker(config)
+        
+        # Try to load structured resume from MongoDB
+        resume_data = None
+        user_id = getattr(request.state, "user_id", None) if request else current_user_id_var.get()
+        if user_id:
+            try:
+                db = get_db()
+                res_doc = db["resumes"].find_one({"user_id": user_id, "type": "original"})
+                if res_doc and "structured_data" in res_doc:
+                    resume_data = res_doc["structured_data"]
+            except Exception:
+                pass
+                
         tweaker.tailor_resume(
             job_title=job["title"],
             job_company=job["company"],
-            job_desc=job["description"]
+            job_desc=job["description"],
+            resume_data=resume_data
         )
         if hasattr(tweaker, "last_tailored_data") and tweaker.last_tailored_data:
             job["tailored_data"] = tweaker.last_tailored_data
-            
-            # Save cache changes
-            jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
-            with open(jobs_json_path, "w", encoding="utf-8") as f:
-                json.dump(jobs_cache, f, indent=2)
-                
+            save_jobs_list(jobs, request)
             tailored_data = job["tailored_data"]
             
     if not tailored_data:
@@ -783,12 +1160,12 @@ def get_tailored_data(job_id: str):
     return tailored_data
 
 @app.post("/api/jobs/{job_id}/apply")
-def apply_to_job(job_id: str, background_tasks: BackgroundTasks):
+def apply_to_job(job_id: str, background_tasks: BackgroundTasks, request: Request = None):
     """
     Triggers automated Naukri login + apply flow in-process (background thread).
     """
-    global jobs_cache
-    job = next((j for j in jobs_cache if j["id"] == job_id), None)
+    jobs = load_jobs_list(request)
+    job = next((j for j in jobs if j["id"] == job_id), None)
     if not job:
         raise HTTPException(status_code=404, detail="Job listing not found in active cache.")
 
@@ -808,7 +1185,7 @@ def _run_apply_inprocess(job_id: str):
     In-process apply runner: loads config, tailors resume, then calls NaukriRunner.apply_to_job().
     Writes live progress to log_buffer for the terminal to display.
     """
-    global jobs_cache, log_buffer
+    global log_buffer
     log_buffer.clear()
 
     from config.constants import GDRIVE_SYNC_ENABLED
@@ -823,15 +1200,8 @@ def _run_apply_inprocess(job_id: str):
     try:
         log(f"[System] Initializing apply pipeline for Job ID '{job_id}'...")
 
-        # Load job from disk (most up-to-date)
-        jobs_path = ROOT_DIR / "data" / "discovered_jobs.json"
-        if not jobs_path.exists():
-            log("[Error] discovered_jobs.json not found. Run a job scan first.")
-            return
-
-        with open(jobs_path, "r", encoding="utf-8") as f:
-            all_jobs = json.load(f)
-
+        # Load job (most up-to-date)
+        all_jobs = load_jobs_list()
         job = next((j for j in all_jobs if j["id"] == job_id), None)
         if not job:
             log(f"[Error] Job ID '{job_id}' not found.")
@@ -845,13 +1215,26 @@ def _run_apply_inprocess(job_id: str):
         # Step 1: Tailor or download resume on demand
         from config.constants import GDRIVE_SYNC_ENABLED, GDRIVE_CLIENT_SECRETS_PATH, GDRIVE_TOKEN_PATH, MODIFIED_RESUME_PATH
         gdrive_file_id = job.get("gdrive_file_id")
-        tailored_path = MODIFIED_RESUME_PATH
+        
+        user_id = current_user_id_var.get()
+        temp_tailored_pdf = None
+        
+        if user_id:
+            import tempfile
+            import os
+            fd, path = tempfile.mkstemp(suffix=".pdf", prefix="tailored_apply_")
+            os.close(fd)
+            tailored_path = path
+            temp_tailored_pdf = path
+        else:
+            tailored_path = MODIFIED_RESUME_PATH or str(ROOT_DIR / "data" / "Modified_Resume.pdf")
+            
         temp_downloaded = False
         
         if GDRIVE_SYNC_ENABLED and gdrive_file_id:
             log("[GDrive] Found existing tailored resume on Google Drive. Downloading...")
             try:
-                gdrive = GoogleDriveManager(
+                gdrive = get_gdrive_manager(user_id, config) if user_id else GoogleDriveManager(
                     client_secrets_path=str(ROOT_DIR / GDRIVE_CLIENT_SECRETS_PATH),
                     token_path=str(ROOT_DIR / GDRIVE_TOKEN_PATH),
                     config=config
@@ -864,12 +1247,32 @@ def _run_apply_inprocess(job_id: str):
                 
         if not temp_downloaded:
             log(f"[AI] Generating tailored resume for {job['title']}...")
+            
+            # Fetch user's original resume data from database if user_id is set
+            resume_data = None
+            if user_id:
+                try:
+                    db = get_db()
+                    orig_doc = db["resumes"].find_one({"user_id": user_id, "type": "original"}, sort=[("created_at", -1)])
+                    if orig_doc:
+                        resume_data = orig_doc.get("structured_data")
+                        log(f"[AI] Loaded base resume data from MongoDB for user: {user_id}")
+                except Exception as db_err:
+                    log(f"[Warning] Failed to fetch base resume from MongoDB: {db_err}. Falling back to template.")
+            
             tweaker = ResumeTweaker(config)
-            tailored_path = tweaker.tailor_resume(
+            actual_pdf_path = tweaker.tailor_resume(
                 job_title=job["title"],
                 job_company=job["company"],
-                job_desc=job["description"]
+                job_desc=job["description"],
+                resume_data=resume_data
             )
+            
+            # If ResumeTweaker outputs a different path, copy it to our target path
+            if actual_pdf_path != tailored_path:
+                import shutil
+                shutil.copy(actual_pdf_path, tailored_path)
+                
             log(f"[Success] Tailored resume ready: {tailored_path}")
             if hasattr(tweaker, "last_tailored_data") and tweaker.last_tailored_data:
                 job["tailored_data"] = tweaker.last_tailored_data
@@ -878,7 +1281,7 @@ def _run_apply_inprocess(job_id: str):
             if GDRIVE_SYNC_ENABLED:
                 log("[GDrive] Syncing tailored resume to Google Drive...")
                 try:
-                    gdrive = GoogleDriveManager(
+                    gdrive = get_gdrive_manager(user_id, config) if user_id else GoogleDriveManager(
                         client_secrets_path=str(ROOT_DIR / GDRIVE_CLIENT_SECRETS_PATH),
                         token_path=str(ROOT_DIR / GDRIVE_TOKEN_PATH),
                         config=config
@@ -891,17 +1294,18 @@ def _run_apply_inprocess(job_id: str):
                 except Exception as e:
                     log(f"[GDrive Warning] Sync skipped: {e}")
 
-        # Step 2: Apply via NaukriRunner
+        # Step 2: Apply via UniversalRunner
         from config.constants import USERNAME, PASSWORD, AGENT_BROWSER_HEADED, AGENT_BROWSER_CDP
-        from src.naukri_runner import NaukriRunner
+        from src.universal_runner import UniversalRunner
 
-        log(f"[Browser] Launching Naukri apply engine for: {job['url']}")
-        runner = NaukriRunner(
+        log(f"[Browser] Launching Universal apply engine for: {job['url']}")
+        runner = UniversalRunner(
             username=USERNAME,
             password=PASSWORD,
             resume_path=tailored_path,
             headed=AGENT_BROWSER_HEADED,
-            cdp_address=AGENT_BROWSER_CDP or ""
+            cdp_address=AGENT_BROWSER_CDP or "",
+            log_callback=log
         )
 
         is_easy_apply = (job.get("apply_type", "Easy Apply") == "Easy Apply")
@@ -927,12 +1331,8 @@ def _run_apply_inprocess(job_id: str):
                 log(f"[Info] Screenshot: {result['screenshot']}")
 
         # Persist updated state
-        with open(jobs_path, "w", encoding="utf-8") as f:
-            json.dump(all_jobs, f, indent=2)
-
-        # Refresh cache
-        jobs_cache = all_jobs
-        log("[System] Job status updated in local database.")
+        save_jobs_list(all_jobs)
+        log("[System] Job status updated in database.")
 
     except Exception as e:
         log(f"[Error] Apply pipeline failed: {e}")
@@ -941,40 +1341,41 @@ def _run_apply_inprocess(job_id: str):
         
         try:
             # Re-read to ensure we do not overwrite other fields concurrently modified
-            jobs_path = ROOT_DIR / "data" / "discovered_jobs.json"
-            if jobs_path.exists():
-                with open(jobs_path, "r", encoding="utf-8") as f:
-                    all_jobs = json.load(f)
-                job = next((j for j in all_jobs if j["id"] == job_id), None)
-                if job:
-                    err_msg = str(e)
-                    friendly_reason = "An unknown error occurred during the apply process."
-                    
-                    if "connect_over_cdp" in err_msg or "EHOSTUNREACH" in err_msg or "Connection refused" in err_msg:
-                        friendly_reason = "Failed to connect to browser. Make sure your local debugger port in Secrets & Keys is correct and Chrome is running."
-                    elif "API_KEY_INVALID" in err_msg or "API key not valid" in err_msg:
-                        friendly_reason = "Invalid Gemini API key. Please check your config in Secrets & Keys."
-                    elif "quota" in err_msg.lower() or "limit" in err_msg.lower() or "429" in err_msg:
-                        friendly_reason = "Gemini LLM API rate limit or quota exceeded. Please try again later."
-                    elif "PDF" in err_msg or "resume" in err_msg.lower():
-                        friendly_reason = "Failed to access resume PDF. Please check your uploaded resume file."
-                    elif "gdrive" in err_msg.lower() or "google drive" in err_msg.lower():
-                        friendly_reason = "Google Drive upload failed. Check your network or credentials."
-                    elif "Target closed" in err_msg or "Browser closed" in err_msg:
-                        friendly_reason = "Browser was closed unexpectedly. Keep the browser open during automation."
-                    
-                    job["applied"] = False
-                    job["apply_result"] = f"Error: {friendly_reason} ({err_msg})"
-                    
-                    with open(jobs_path, "w", encoding="utf-8") as f:
-                        json.dump(all_jobs, f, indent=2)
-                    jobs_cache = all_jobs
-                    log("[System] Apply pipeline failure written to local database.")
+            all_jobs = load_jobs_list()
+            job = next((j for j in all_jobs if j["id"] == job_id), None)
+            if job:
+                err_msg = str(e)
+                friendly_reason = "An unknown error occurred during the apply process."
+                
+                if "connect_over_cdp" in err_msg or "EHOSTUNREACH" in err_msg or "Connection refused" in err_msg:
+                    friendly_reason = "Failed to connect to browser. Make sure your local debugger port in Secrets & Keys is correct and Chrome is running."
+                elif "API_KEY_INVALID" in err_msg or "API key not valid" in err_msg:
+                    friendly_reason = "Invalid Gemini API key. Please check your config in Secrets & Keys."
+                elif "quota" in err_msg.lower() or "limit" in err_msg.lower() or "429" in err_msg:
+                    friendly_reason = "Gemini LLM API rate limit or quota exceeded. Please try again later."
+                elif "PDF" in err_msg or "resume" in err_msg.lower():
+                    friendly_reason = "Failed to access resume PDF. Please check your uploaded resume file."
+                elif "gdrive" in err_msg.lower() or "google drive" in err_msg.lower():
+                    friendly_reason = "Google Drive upload failed. Check your network or credentials."
+                elif "Target closed" in err_msg or "Browser closed" in err_msg:
+                    friendly_reason = "Browser was closed unexpectedly. Keep the browser open during automation."
+                
+                job["applied"] = False
+                job["apply_result"] = f"Error: {friendly_reason} ({err_msg})"
+                
+                save_jobs_list(all_jobs)
+                log("[System] Apply pipeline failure written to database.")
         except Exception as db_err:
             log(f"[Error] Failed to write apply error to database: {db_err}")
     finally:
-        # Clean up temporary local file if we synced to Google Drive or downloaded from Drive
-        if GDRIVE_SYNC_ENABLED and temp_downloaded and tailored_path and os.path.exists(tailored_path):
+        # Clean up temporary local file
+        if temp_tailored_pdf and os.path.exists(temp_tailored_pdf):
+            try:
+                os.remove(temp_tailored_pdf)
+                log("[System] Cleaned up temporary local tailored resume file.")
+            except Exception as clean_err:
+                log(f"[System Warning] Could not remove temp file: {clean_err}")
+        elif GDRIVE_SYNC_ENABLED and temp_downloaded and tailored_path and os.path.exists(tailored_path):
             try:
                 os.remove(tailored_path)
                 log("[System] Cleaned up temporary local tailored resume file.")
@@ -983,6 +1384,49 @@ def _run_apply_inprocess(job_id: str):
 
 
 # Google Drive Helper Functions & Endpoints
+def get_gdrive_manager(user_id: str, config: JobAppConfig = None) -> GoogleDriveManager:
+    """
+    Retrieves Google Drive credentials and token dynamically from MongoDB config document,
+    and returns a GoogleDriveManager instance.
+    """
+    db = get_db()
+    user_config = db["configs"].find_one({"user_id": user_id})
+    constants = user_config.get("constants", {}) if user_config else {}
+    
+    # Extract MongoDB credentials
+    secrets_content = constants.get("GDRIVE_CLIENT_SECRETS_CONTENT")
+    token_content = constants.get("GDRIVE_TOKEN_CONTENT")
+    
+    # Callback to save updated token back to MongoDB on token refresh
+    def on_token_change(new_token_str):
+        try:
+            import json
+            token_dict = json.loads(new_token_str)
+            db["configs"].update_one(
+                {"user_id": user_id},
+                {"$set": {"constants.GDRIVE_TOKEN_CONTENT": token_dict}}
+            )
+            logger.info("Google authorization token updated dynamically in MongoDB.")
+        except Exception as e:
+            logger.error(f"Failed to save refreshed token to MongoDB: {e}")
+            
+    # Resolve fallback paths if config files exist locally
+    local_sync, local_secrets_path, local_token_path = get_gdrive_config()
+    
+    # Load config yaml fallback if not provided
+    if config is None:
+        yaml_path = ROOT_DIR / "config" / "searches.yaml"
+        config = load_config(yaml_path)
+        
+    return GoogleDriveManager(
+        client_secrets_path=local_secrets_path,
+        token_path=local_token_path,
+        config=config,
+        client_secrets_content=secrets_content,
+        token_content=token_content,
+        on_token_change=on_token_change
+    )
+
 def get_gdrive_config():
     """
     Parses and returns Google Drive config variables from config/constants.py.
@@ -1048,18 +1492,23 @@ def enable_gdrive_sync_in_constants():
     """
     pass
 
-def run_gdrive_auth_flow(secrets_path: str, token_path: str):
+def run_gdrive_auth_flow(secrets_path: str, token_path: str, user_id: str = None):
     global gdrive_auth_url, gdrive_auth_error
     gdrive_auth_url = None
     gdrive_auth_error = None
     try:
-        yaml_path = ROOT_DIR / "config" / "searches.yaml"
-        config = load_config(yaml_path)
-        manager = GoogleDriveManager(
-            client_secrets_path=secrets_path,
-            token_path=token_path,
-            config=config
-        )
+        if user_id:
+            # Bind current user id context variable
+            current_user_id_var.set(user_id)
+            manager = get_gdrive_manager(user_id)
+        else:
+            yaml_path = ROOT_DIR / "config" / "searches.yaml"
+            config = load_config(yaml_path)
+            manager = GoogleDriveManager(
+                client_secrets_path=secrets_path,
+                token_path=token_path,
+                config=config
+            )
         
         def save_url(url):
             global gdrive_auth_url
@@ -1073,10 +1522,36 @@ def run_gdrive_auth_flow(secrets_path: str, token_path: str):
         print(f"Error during Google Drive OAuth flow: {e}")
 
 @app.get("/api/gdrive/status")
-def get_gdrive_status():
+def get_gdrive_status(request: Request):
     """
     Checks the status of the Google Drive integration.
     """
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        try:
+            db = get_db()
+            user_config = db["configs"].find_one({"user_id": user_id})
+            constants = user_config.get("constants", {}) if user_config else {}
+            sync_enabled = constants.get("GDRIVE_SYNC_ENABLED", False)
+            secrets_exist = "GDRIVE_CLIENT_SECRETS_CONTENT" in constants
+            token_exists = "GDRIVE_TOKEN_CONTENT" in constants
+            authenticated = False
+            
+            if secrets_exist:
+                try:
+                    manager = get_gdrive_manager(user_id)
+                    authenticated = manager.load_credentials()
+                except Exception:
+                    pass
+            return {
+                "sync_enabled": sync_enabled,
+                "client_secrets_exist": secrets_exist,
+                "token_exists": token_exists,
+                "authenticated": authenticated
+            }
+        except Exception as e:
+            logger.error(f"Failed to check gdrive status from DB: {e}")
+
     sync_enabled, secrets_path, token_path = get_gdrive_config()
     
     secrets_exist = os.path.exists(secrets_path)
@@ -1104,25 +1579,41 @@ def get_gdrive_status():
     }
 
 @app.post("/api/gdrive/auth")
-def authenticate_gdrive():
+def authenticate_gdrive(request: Request):
     """
     Triggers Google Drive local OAuth authentication in a background thread and returns the authorization URL.
     """
     global gdrive_auth_thread, gdrive_auth_url, gdrive_auth_error
-    sync_enabled, secrets_path, token_path = get_gdrive_config()
     
-    if not os.path.exists(secrets_path):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Google Client Secrets credentials file not found at: {secrets_path}. Please place it there first."
-        )
+    user_id = getattr(request.state, "user_id", None)
+    secrets_exist = False
+    
+    if user_id:
+        try:
+            db = get_db()
+            user_config = db["configs"].find_one({"user_id": user_id})
+            constants = user_config.get("constants", {}) if user_config else {}
+            secrets_exist = "GDRIVE_CLIENT_SECRETS_CONTENT" in constants
+        except Exception:
+            pass
+            
+    if not user_id or not secrets_exist:
+        sync_enabled, secrets_path, token_path = get_gdrive_config()
+        if not os.path.exists(secrets_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Google Client Secrets credentials file not found at: {secrets_path}. Please place it there first."
+            )
+    else:
+        secrets_path = None
+        token_path = None
         
     gdrive_auth_url = None
     gdrive_auth_error = None
     
     gdrive_auth_thread = threading.Thread(
         target=run_gdrive_auth_flow,
-        args=(secrets_path, token_path),
+        args=(secrets_path, token_path, user_id),
         daemon=True
     )
     gdrive_auth_thread.start()
@@ -1148,9 +1639,9 @@ def authenticate_gdrive():
     }
 
 @app.post("/api/resume/scan-filters")
-def scan_resume_for_filters():
+def scan_resume_for_filters(request: Request = None):
     """
-    Reads the candidate's resume PDF from config/constants.py RESUME_PATH.
+    Reads the candidate's resume PDF from config/constants.py RESUME_PATH (or MongoDB if authenticated).
     Parses the text, uses Gemini to extract skills, experience, and target positions.
     Returns the parsed results.
     """
@@ -1162,6 +1653,26 @@ def scan_resume_for_filters():
     resume_path = consts.RESUME_PATH
     gemini_key = consts.GEMINI_API_KEY
     
+    # Try to load resume from MongoDB if authenticated
+    user_id = getattr(request.state, "user_id", None) if request else current_user_id_var.get()
+    temp_file = None
+    if user_id:
+        try:
+            db = get_db()
+            res_doc = db["resumes"].find_one({"user_id": user_id, "type": "original"})
+            if res_doc and "pdf_data" in res_doc:
+                import tempfile
+                import base64
+                suffix = ".pdf"
+                if "filename" in res_doc:
+                    suffix = Path(res_doc["filename"]).suffix
+                temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+                temp_file.write(base64.b64decode(res_doc["pdf_data"]))
+                temp_file.close()
+                resume_path = temp_file.name
+        except Exception as e:
+            logger.warning(f"Failed to fetch original resume from MongoDB for filter scanning: {e}")
+
     # Check constants.py statically as a fallback if not configured dynamically
     if not resume_path:
         constants_path = ROOT_DIR / "config" / "constants.py"
@@ -1249,6 +1760,12 @@ def scan_resume_for_filters():
             text += page.extract_text() or ""
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse resume PDF: {e}")
+    finally:
+        if temp_file:
+            try:
+                os.unlink(temp_file.name)
+            except Exception:
+                pass
         
     extracted_data = {
         "candidate_experience_years": 0.0,
@@ -1315,18 +1832,89 @@ def scan_resume_for_filters():
 # ============================================================
 
 @app.post("/api/upload/resume")
-async def upload_resume(file: UploadFile = File(...)):
+async def upload_resume(request: Request = None, file: UploadFile = File(...)):
     """
-    Accepts a PDF resume upload, saves it to the assets/resume/ folder.
+    Accepts a PDF resume upload, saves it to MongoDB if authenticated, or falls back to assets/resume/ folder.
     Bypasses updating constants.py on disk due to sessionStorage isolation.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted for resume upload.")
 
+    user_id = getattr(request.state, "user_id", None) if request else None
+    file_bytes = await file.read()
+    
+    if user_id:
+        try:
+            db = get_db()
+            import base64
+            import uuid
+            import tempfile
+            import os
+            import time
+            
+            # Extract text from the PDF file bytes
+            fd, path = tempfile.mkstemp(suffix=".pdf", prefix="uploaded_resume_")
+            try:
+                with os.fdopen(fd, 'wb') as tmp:
+                    tmp.write(file_bytes)
+                raw_text = extract_text_from_pdf(path)
+            finally:
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
+                    
+            res_id = str(uuid.uuid4())
+            base64_pdf = base64.b64encode(file_bytes).decode("utf-8")
+            
+            # Extract structured template or default
+            from config.constants import GEMINI_API_KEY
+            structured = parse_and_structure_resume(raw_text, GEMINI_API_KEY)
+            
+            # Upsert original resume for the user
+            db["resumes"].update_one(
+                {"user_id": user_id, "type": "original"},
+                {"$set": {
+                    "id": res_id,
+                    "filename": file.filename,
+                    "pdf_data": base64_pdf,
+                    "raw_text": raw_text,
+                    "structured_data": structured,
+                    "created_at": time.time(),
+                    "size": len(file_bytes)
+                }},
+                upsert=True
+            )
+            
+            # Also update their RESUME_PATH constant to point to this DB record identifier
+            db["configs"].update_one(
+                {"user_id": user_id},
+                {"$set": {"constants.RESUME_PATH": f"database:resumes.{res_id}"}},
+                upsert=True
+            )
+            
+            # Update ContextVar if active
+            session_var = consts_session_var.get()
+            if session_var and "constants" in session_var:
+                session_var["constants"]["RESUME_PATH"] = f"database:resumes.{res_id}"
+                
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "path": f"database:resumes.{res_id}",
+                "message": "Resume uploaded and saved to MongoDB successfully."
+            }
+        except Exception as e:
+            logger.error(f"Failed to save resume to MongoDB: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save resume: {e}")
+        finally:
+            await file.close()
+
+    # Fallback to local files
     dest_path = RESUME_DIR / file.filename
     try:
         with open(dest_path, "wb") as out:
-            shutil.copyfileobj(file.file, out)
+            out.write(file_bytes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save uploaded resume: {e}")
     finally:
@@ -1341,24 +1929,55 @@ async def upload_resume(file: UploadFile = File(...)):
 
 
 @app.post("/api/upload/gdrive-credentials")
-async def upload_gdrive_credentials(file: UploadFile = File(...)):
+async def upload_gdrive_credentials(request: Request, file: UploadFile = File(...)):
     """
-    Accepts a Google OAuth credentials JSON upload and saves it to config/credentials.json.
-    Auto-updates GDRIVE_CLIENT_SECRETS_PATH in constants.py.
+    Accepts a Google OAuth credentials JSON upload. Saves it to MongoDB configuration if authenticated,
+    otherwise falls back to saving to config/credentials.json.
     """
     if not file.filename or not file.filename.lower().endswith(".json"):
         raise HTTPException(status_code=400, detail="Only JSON files are accepted for Google credentials upload.")
 
-    dest_path = ROOT_DIR / "config" / "credentials.json"
     try:
-        with open(dest_path, "wb") as out:
-            shutil.copyfileobj(file.file, out)
+        content_bytes = await file.read()
+        raw_json_str = content_bytes.decode("utf-8")
+        import json
+        secrets_data = json.loads(raw_json_str)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save credentials file: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid JSON credentials file format: {e}")
     finally:
         await file.close()
 
-    # Auto-update GDRIVE_CLIENT_SECRETS_PATH in constants.py
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        try:
+            db = get_db()
+            db["configs"].update_one(
+                {"user_id": user_id},
+                {"$set": {"constants.GDRIVE_CLIENT_SECRETS_CONTENT": secrets_data}},
+                upsert=True
+            )
+            # Update ContextVar if active
+            session_var = consts_session_var.get()
+            if session_var and "constants" in session_var:
+                session_var["constants"]["GDRIVE_CLIENT_SECRETS_CONTENT"] = secrets_data
+            
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "path": "database:configs.constants.GDRIVE_CLIENT_SECRETS_CONTENT",
+                "message": "Google credentials JSON saved successfully to MongoDB."
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save credentials to MongoDB: {e}")
+
+    # Fallback to local files
+    dest_path = ROOT_DIR / "config" / "credentials.json"
+    try:
+        with open(dest_path, "w", encoding="utf-8") as out:
+            json.dump(secrets_data, out, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save credentials file: {e}")
+
     constants_path = ROOT_DIR / "config" / "constants.py"
     if constants_path.exists():
         import re
@@ -1389,16 +2008,37 @@ def list_assets():
 
 
 @app.delete("/api/assets/{filename}")
-def delete_asset(filename: str):
+def delete_asset(filename: str, request: Request = None):
     """
     Deletes a file from the assets/resume/ or assets/ folder and clears the matching
-    config key (RESUME_PATH) from constants.py when the resume is removed.
+    config key (RESUME_PATH) from database configs (or constants.py fallback) when the resume is removed.
     """
     import re as _re
     # Clean filename checks - allow common chars including parens and brackets
     if not _re.match(r'^[\w\-\.\(\)\[\] ]+\.(pdf|json|docx)$', filename):
         raise HTTPException(status_code=400, detail="Invalid filename.")
     
+    user_id = getattr(request.state, "user_id", None) if request else None
+    
+    if user_id:
+        try:
+            db = get_db()
+            res_doc = db["resumes"].find_one({"user_id": user_id, "type": "original"})
+            if res_doc and res_doc.get("filename") == filename:
+                db["resumes"].delete_one({"_id": res_doc["_id"]})
+                db["configs"].update_one(
+                    {"user_id": user_id},
+                    {"$set": {"constants.RESUME_PATH": ""}}
+                )
+                session_var = consts_session_var.get()
+                if session_var and "constants" in session_var:
+                    session_var["constants"]["RESUME_PATH"] = ""
+                logger.info(f"Deleted resume asset '{filename}' from MongoDB.")
+                return {"status": "success", "message": f"'{filename}' deleted from database successfully."}
+        except Exception as e:
+            logger.error(f"Failed to delete resume asset from database: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete database asset: {e}")
+
     # Check resume subfolder first
     file_path = RESUME_DIR / filename
     if not file_path.exists():
@@ -1432,13 +2072,43 @@ def delete_asset(filename: str):
 
 
 @app.delete("/api/gdrive-credentials")
-def delete_gdrive_credentials():
-    """Deletes config/credentials.json and clears GDRIVE_CLIENT_SECRETS_PATH."""
+def delete_gdrive_credentials(request: Request):
+    """Deletes Google credentials and token from MongoDB or filesystem."""
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        try:
+            db = get_db()
+            db["configs"].update_one(
+                {"user_id": user_id},
+                {"$unset": {
+                    "constants.GDRIVE_CLIENT_SECRETS_CONTENT": "",
+                    "constants.GDRIVE_TOKEN_CONTENT": ""
+                }}
+            )
+            # Remove from ContextVar if active
+            session_var = consts_session_var.get()
+            if session_var and "constants" in session_var:
+                session_var["constants"].pop("GDRIVE_CLIENT_SECRETS_CONTENT", None)
+                session_var["constants"].pop("GDRIVE_TOKEN_CONTENT", None)
+                
+            return {"status": "success", "message": "Google credentials deleted from MongoDB."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete credentials from MongoDB: {e}")
+
     import re as _re
     creds_path = ROOT_DIR / "config" / "credentials.json"
-    if not creds_path.exists():
-        raise HTTPException(status_code=404, detail="credentials.json not found.")
-    creds_path.unlink()
+    token_path = ROOT_DIR / "data" / "token.json"
+    
+    deleted_any = False
+    if creds_path.exists():
+        creds_path.unlink()
+        deleted_any = True
+    if token_path.exists():
+        token_path.unlink()
+        deleted_any = True
+        
+    if not deleted_any:
+        raise HTTPException(status_code=404, detail="No Google credentials file found.")
 
     constants_path = ROOT_DIR / "config" / "constants.py"
     if constants_path.exists():
@@ -1554,7 +2224,7 @@ class DeleteFileRequest(BaseModel):
     path: str
 
 @app.post("/api/resume-hub/upload")
-async def resume_hub_upload(file: UploadFile = File(...)):
+async def resume_hub_upload(request: Request, file: UploadFile = File(...)):
     """
     Saves a custom resume PDF or DOCX file, extracts its raw text natively,
     and returns a structured JSON matching candidate profile templates.
@@ -1563,25 +2233,34 @@ async def resume_hub_upload(file: UploadFile = File(...)):
     if ext not in [".pdf", ".docx", ".doc"]:
         raise HTTPException(status_code=400, detail="Only .pdf and .docx (or converted .doc) files are supported.")
         
-    hub_original_dir = ROOT_DIR / "assets" / "resume_hub" / "original"
-    hub_original_dir.mkdir(parents=True, exist_ok=True)
+    user_id = getattr(request.state, "user_id", None)
+    file_bytes = await file.read()
     
-    # Save file
-    target_path = hub_original_dir / file.filename
-    with open(target_path, "wb") as f:
-        f.write(await file.read())
+    import tempfile
+    import os
+    import base64
+    
+    # Save to a temporary file
+    fd, path = tempfile.mkstemp(suffix=ext, prefix="uploaded_resume_")
+    try:
+        with os.fdopen(fd, 'wb') as tmp:
+            tmp.write(file_bytes)
+        target_path = Path(path)
         
-    # Extract text
-    raw_text = ""
-    if ext == ".docx":
-        raw_text = extract_text_from_docx(str(target_path))
-    elif ext == ".pdf":
-        raw_text = extract_text_from_pdf(str(target_path))
-    elif ext == ".doc":
-        # Binary .doc fallback info
-        target_path.unlink()
-        raise HTTPException(status_code=400, detail="Old binary .doc format is not natively supported. Please convert it to modern .docx or PDF and upload again.")
-        
+        # Extract text
+        raw_text = ""
+        if ext == ".docx":
+            raw_text = extract_text_from_docx(str(target_path))
+        elif ext == ".pdf":
+            raw_text = extract_text_from_pdf(str(target_path))
+        elif ext == ".doc":
+            raise HTTPException(status_code=400, detail="Old binary .doc format is not natively supported. Please convert it to modern .docx or PDF and upload again.")
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+            
     if not raw_text.strip():
         raise HTTPException(status_code=400, detail="Failed to extract readable text content from the uploaded resume.")
         
@@ -1589,17 +2268,43 @@ async def resume_hub_upload(file: UploadFile = File(...)):
     from config.constants import GEMINI_API_KEY
     structured = parse_and_structure_resume(raw_text, GEMINI_API_KEY)
     
-    # Save original structured JSON
-    try:
-        filename_stem = Path(file.filename).stem
-        filename_clean = _re.sub(r'[\W_]+', '_', filename_stem)
-        json_path = hub_original_dir / f"{filename_clean}.json"
-        with open(json_path, "w", encoding="utf-8") as f_json:
-            json.dump(structured, f_json, indent=2)
-        logger.info(f"Saved original structured JSON copy on disk: {json_path}")
-    except Exception as err:
-        logger.warning(f"Failed to save original structured JSON copy: {err}")
-    
+    if user_id:
+        try:
+            db = get_db()
+            res_id = str(uuid.uuid4())
+            base64_pdf = base64.b64encode(file_bytes).decode("utf-8")
+            db["resumes"].insert_one({
+                "id": res_id,
+                "user_id": user_id,
+                "type": "original",
+                "filename": file.filename,
+                "pdf_data": base64_pdf,
+                "raw_text": raw_text,
+                "structured_data": structured,
+                "created_at": time.time(),
+                "size": len(file_bytes)
+            })
+            logger.info(f"Saved original resume in MongoDB for user: {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to save original resume to MongoDB: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to persist resume: {e}")
+    else:
+        # Fallback to local files if no user session
+        hub_original_dir = ROOT_DIR / "assets" / "resume_hub" / "original"
+        hub_original_dir.mkdir(parents=True, exist_ok=True)
+        disk_path = hub_original_dir / file.filename
+        with open(disk_path, "wb") as f:
+            f.write(file_bytes)
+        try:
+            filename_stem = Path(file.filename).stem
+            filename_clean = _re.sub(r'[\W_]+', '_', filename_stem)
+            json_path = hub_original_dir / f"{filename_clean}.json"
+            with open(json_path, "w", encoding="utf-8") as f_json:
+                json.dump(structured, f_json, indent=2)
+            logger.info(f"Saved original structured JSON copy on disk: {json_path}")
+        except Exception as err:
+            logger.warning(f"Failed to save original structured JSON copy: {err}")
+            
     return {
         "filename": file.filename,
         "structured_data": structured,
@@ -1654,11 +2359,13 @@ def resume_hub_analyze(payload: ResumeAnalyzeRequest):
     }
 
 @app.post("/api/resume-hub/tailor")
-def resume_hub_tailor(payload: ResumeTailorRequest):
+def resume_hub_tailor(request: Request, payload: ResumeTailorRequest):
     """
     Custom tailors the structured resume JSON, compiles an ATS-friendly ReportLab PDF,
-    saves it locally, and conducts a full ATS compatibility audit.
+    saves it, and conducts a full ATS compatibility audit.
     """
+    user_id = getattr(request.state, "user_id", None)
+    
     # 1. Custom tailor the resume JSON against job description
     from config.constants import GEMINI_API_KEY
     
@@ -1706,48 +2413,118 @@ Instructions:
         tweaker = ResumeTweaker(config=None)
         tailored_data = tweaker._tailor_locally(tailored_data, payload.job_title, payload.job_description, payload.job_company)
             
-    # 2. Output folder and file setup
-    company_clean = _re.sub(r'[\W_]+', '_', payload.job_company.lower().strip())
-    if not company_clean:
-        company_clean = "generic"
-        
-    folder_path = ROOT_DIR / "assets" / f"{company_clean}_resume"
-    folder_path.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    import os
+    import base64
     
     filename_stem = Path(payload.filename).stem
     filename_clean = _re.sub(r'[\W_]+', '_', filename_stem)
     tailored_filename = f"{filename_clean}_tailored.pdf"
-    pdf_path = folder_path / tailored_filename
     
-    # 3. Generate standard ATS PDF
-    generate_ats_friendly_pdf(tailored_data, str(pdf_path))
-    
-    # Save the corresponding JSON file for visual Diffs later
-    try:
-        json_path = pdf_path.with_suffix(".json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(tailored_data, f, indent=2)
-        logger.info(f"Saved tailored JSON copy on disk: {json_path}")
-    except Exception as json_err:
-        logger.warning(f"Failed to save tailored JSON copy: {json_err}")
-    
-    # 4. Audit ATS Score (Both original and tailored)
-    original_text = dict_to_plain_text(payload.resume_data)
-    original_audit = audit_ats_score(original_text, payload.job_description, GEMINI_API_KEY)
-    
-    tailored_text = extract_text_from_pdf(str(pdf_path))
-    audit = audit_ats_score(tailored_text, payload.job_description, GEMINI_API_KEY)
-    
-    return {
-        "pdf_path": str(pdf_path),
-        "filename": tailored_filename,
-        "tailored_data": tailored_data,
-        "ats_audit": audit,
-        "original_ats_audit": original_audit
-    }
+    if user_id:
+        try:
+            # 1. Save tailored JSON and compile PDF locally to a temporary file
+            fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="tailored_resume_")
+            os.close(fd)
+            
+            # Generate ReportLab PDF on temp path
+            generate_ats_friendly_pdf(tailored_data, temp_pdf_path)
+            
+            # Apply hash buster to the temp PDF
+            from src.document_generator import DocumentGenerator
+            doc_gen = DocumentGenerator("", temp_pdf_path)
+            doc_gen.regenerate_with_hash_modifier()
+            
+            # Read compiled PDF bytes
+            with open(temp_pdf_path, "rb") as f_pdf:
+                pdf_bytes = f_pdf.read()
+                
+            base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+            
+            # Extract plain text of tailored PDF to run audit on actual generated file
+            tailored_text = extract_text_from_pdf(temp_pdf_path)
+            
+            # Remove temp file
+            try:
+                os.unlink(temp_pdf_path)
+            except Exception:
+                pass
+                
+            # 2. Audit ATS Score (Both original and tailored)
+            original_text = dict_to_plain_text(payload.resume_data)
+            original_audit = audit_ats_score(original_text, payload.job_description, GEMINI_API_KEY)
+            audit = audit_ats_score(tailored_text, payload.job_description, GEMINI_API_KEY)
+            
+            # 3. Store tailored resume in MongoDB resumes collection
+            db = get_db()
+            res_id = str(uuid.uuid4())
+            
+            db["resumes"].insert_one({
+                "id": res_id,
+                "user_id": user_id,
+                "type": "tailored",
+                "filename": tailored_filename,
+                "company": payload.job_company,
+                "job_title": payload.job_title,
+                "job_description": payload.job_description,
+                "pdf_data": base64_pdf,
+                "raw_text": tailored_text,
+                "structured_data": tailored_data,
+                "original_data": payload.resume_data,
+                "ats_audit": audit,
+                "original_ats_audit": original_audit,
+                "created_at": time.time(),
+                "size": len(pdf_bytes)
+            })
+            logger.info(f"Persisted tailored resume to MongoDB for user: {user_id}")
+            
+            return {
+                "pdf_path": res_id,  # Use ID as the return path to maintain full frontend compatibility
+                "filename": tailored_filename,
+                "tailored_data": tailored_data,
+                "ats_audit": audit,
+                "original_ats_audit": original_audit
+            }
+        except Exception as e:
+            logger.error(f"Failed to tailor resume in database: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to tailor/persist resume: {e}")
+    else:
+        # Fallback to local files if no user session
+        company_clean = _re.sub(r'[\W_]+', '_', payload.job_company.lower().strip())
+        if not company_clean:
+            company_clean = "generic"
+            
+        folder_path = ROOT_DIR / "assets" / f"{company_clean}_resume"
+        folder_path.mkdir(parents=True, exist_ok=True)
+        
+        pdf_path = folder_path / tailored_filename
+        
+        generate_ats_friendly_pdf(tailored_data, str(pdf_path))
+        
+        try:
+            json_path = pdf_path.with_suffix(".json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(tailored_data, f, indent=2)
+            logger.info(f"Saved tailored JSON copy on disk: {json_path}")
+        except Exception as json_err:
+            logger.warning(f"Failed to save tailored JSON copy: {json_err}")
+            
+        original_text = dict_to_plain_text(payload.resume_data)
+        original_audit = audit_ats_score(original_text, payload.job_description, GEMINI_API_KEY)
+        
+        tailored_text = extract_text_from_pdf(str(pdf_path))
+        audit = audit_ats_score(tailored_text, payload.job_description, GEMINI_API_KEY)
+        
+        return {
+            "pdf_path": str(pdf_path),
+            "filename": tailored_filename,
+            "tailored_data": tailored_data,
+            "ats_audit": audit,
+            "original_ats_audit": original_audit
+        }
 
 @app.post("/api/resume-hub/email")
-def resume_hub_email(payload: EmailResumeRequest):
+def resume_hub_email(request: Request, payload: EmailResumeRequest):
     """
     Decrypts the SMTP password, attaches the tailored resume PDF, and emails it.
     """
@@ -1757,28 +2534,78 @@ def resume_hub_email(payload: EmailResumeRequest):
     if not consts.SMTP_HOST or not consts.SMTP_USER:
         raise HTTPException(status_code=400, detail="SMTP email settings are not configured in Secrets & Keys.")
         
-    result = send_resume_via_email(
-        to_email=payload.to_email,
-        subject=payload.subject,
-        body=payload.body,
-        attachment_path=payload.attachment_path,
-        smtp_host=consts.SMTP_HOST,
-        smtp_port=consts.SMTP_PORT,
-        smtp_user=consts.SMTP_USER,
-        smtp_pass=consts.SMTP_PASSWORD
-    )
+    user_id = getattr(request.state, "user_id", None)
+    temp_pdf_path = None
+    attachment_path_to_send = payload.attachment_path
     
+    if user_id:
+        try:
+            db = get_db()
+            doc = db["resumes"].find_one({"id": payload.attachment_path, "user_id": user_id})
+            if doc and "pdf_data" in doc:
+                import tempfile
+                import base64
+                import os
+                
+                # Write to temp file
+                pdf_bytes = base64.b64decode(doc["pdf_data"])
+                fd, temp_path = tempfile.mkstemp(suffix=".pdf", prefix="email_attachment_")
+                os.close(fd)
+                temp_pdf_path = temp_path
+                with open(temp_pdf_path, "wb") as f_attach:
+                    f_attach.write(pdf_bytes)
+                attachment_path_to_send = temp_pdf_path
+        except Exception as e:
+            logger.warning(f"Could not load resume from DB for email: {e}")
+            
+    try:
+        result = send_resume_via_email(
+            to_email=payload.to_email,
+            subject=payload.subject,
+            body=payload.body,
+            attachment_path=attachment_path_to_send,
+            smtp_host=consts.SMTP_HOST,
+            smtp_port=consts.SMTP_PORT,
+            smtp_user=consts.SMTP_USER,
+            smtp_pass=consts.SMTP_PASSWORD
+        )
+    finally:
+        if temp_pdf_path and os.path.exists(temp_pdf_path):
+            try:
+                os.unlink(temp_pdf_path)
+            except Exception:
+                pass
+                
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result["message"])
         
     return {"status": "success", "message": result["message"]}
 
 @app.get("/api/resume-hub/files")
-def resume_hub_files():
+def resume_hub_files(request: Request):
     """
-    Lists all custom tailored PDF files residing locally inside the asset subfolders.
+    Lists all custom tailored PDF files residing in MongoDB or local folder.
     """
+    user_id = getattr(request.state, "user_id", None)
     files = []
+    
+    if user_id:
+        try:
+            db = get_db()
+            cursor = db["resumes"].find({"user_id": user_id, "type": "tailored"})
+            for doc in cursor:
+                files.append({
+                    "company": doc.get("company", "Unknown"),
+                    "filename": doc.get("filename", "resume_tailored.pdf"),
+                    "path": doc.get("id"),
+                    "size": doc.get("size", 0),
+                    "created_at": doc.get("created_at", 0)
+                })
+            return {"files": sorted(files, key=lambda x: x["created_at"], reverse=True)}
+        except Exception as e:
+            logger.error(f"Failed to fetch tailored resumes from database: {e}")
+            
+    # Fallback to local files
     assets_dir = ROOT_DIR / "assets"
     if assets_dir.exists():
         for item in assets_dir.iterdir():
@@ -1796,10 +2623,23 @@ def resume_hub_files():
     return {"files": sorted(files, key=lambda x: x["created_at"], reverse=True)}
 
 @app.delete("/api/resume-hub/files")
-def resume_hub_delete_file(payload: DeleteFileRequest):
+def resume_hub_delete_file(request: Request, payload: DeleteFileRequest):
     """
-    Deletes the tailored PDF from assets, ensuring no path traversal vulnerability.
+    Deletes the tailored PDF from database or local assets.
     """
+    user_id = getattr(request.state, "user_id", None)
+    
+    if user_id:
+        try:
+            db = get_db()
+            result = db["resumes"].delete_one({"id": payload.path, "user_id": user_id})
+            if result.deleted_count > 0:
+                logger.info(f"Deleted resume {payload.path} from database for user: {user_id}")
+                return {"status": "success", "message": "Tailored resume deleted successfully from database."}
+        except Exception as e:
+            logger.error(f"Failed to delete resume from database: {e}")
+            
+    # Local disk fallback
     target = Path(payload.path)
     
     # Path traversal validation
@@ -1830,10 +2670,21 @@ def resume_hub_delete_file(payload: DeleteFileRequest):
     return {"status": "success", "message": "Tailored resume deleted successfully."}
 
 @app.get("/api/resume-hub/tailored_data")
-def resume_hub_get_tailored_data(path: str):
+def resume_hub_get_tailored_data(request: Request, path: str):
     """
-    Returns the tailored JSON data from disk corresponding to the PDF path.
+    Returns the tailored JSON data from database or disk corresponding to the PDF path.
     """
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        try:
+            db = get_db()
+            doc = db["resumes"].find_one({"id": path, "user_id": user_id})
+            if doc and "structured_data" in doc:
+                return doc["structured_data"]
+        except Exception as e:
+            logger.error(f"Failed to read tailored resume JSON from database: {e}")
+            
+    # Local fallback
     pdf_path = Path(path)
     # Path traversal validation
     try:
@@ -1852,24 +2703,35 @@ def resume_hub_get_tailored_data(path: str):
     raise HTTPException(status_code=404, detail="Tailored JSON data file not found.")
  
 @app.get("/api/resume-hub/original_data")
-def resume_hub_get_original_data(path: str):
+def resume_hub_get_original_data(request: Request, path: str):
     """
-    Returns the original JSON data corresponding to the tailored PDF path.
+    Returns the original JSON data corresponding to the resume ID or path.
     """
-    pdf_path = Path(path)
-    # The tailored PDF filename is {filename_clean}_tailored.pdf
-    # So the original filename stem is pdf_path.name.replace("_tailored.pdf", "")
-    filename_clean = pdf_path.name.replace("_tailored.pdf", "")
-    
-    hub_original_dir = ROOT_DIR / "assets" / "resume_hub" / "original"
-    json_path = hub_original_dir / f"{filename_clean}.json"
-    
-    if json_path.exists() and json_path.is_file():
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            db = get_db()
+            doc = db["resumes"].find_one({"id": path, "user_id": user_id})
+            if doc and "original_data" in doc:
+                return doc["original_data"]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read original JSON data: {e}")
+            logger.error(f"Failed to read original resume JSON from database: {e}")
+            
+    # Local fallback
+    try:
+        pdf_path = Path(path)
+        filename_clean = pdf_path.name.replace("_tailored.pdf", "")
+        hub_original_dir = ROOT_DIR / "assets" / "resume_hub" / "original"
+        json_path = hub_original_dir / f"{filename_clean}.json"
+        
+        if json_path.exists() and json_path.is_file():
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to read original JSON data: {e}")
+    except Exception:
+        pass
             
     # Fallback to general original resume template if not found
     from src.resume_tweaker import NITIN_RESUME_TEMPLATE

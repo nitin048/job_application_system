@@ -79,17 +79,55 @@ class SecureBrowserDriver:
             
             user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             
-            # Load stored session cookies if state exists locally
-            with STATE_LOCK:
-                state_exists = self.state_path.exists()
-                
-            if state_exists:
-                logger.info(f"Loading session context state from {self.state_path}")
+            from src.db import get_db, current_user_id_var
+            import tempfile
+            import json
+            import os
+            
+            db_state = None
+            user_id = current_user_id_var.get()
+            if user_id:
+                try:
+                    db = get_db()
+                    state_doc = db["browser_states"].find_one({"user_id": user_id})
+                    if state_doc and "state" in state_doc:
+                        db_state = state_doc["state"]
+                        logger.info(f"Retrieved browser session state from MongoDB for user: {user_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to load browser state from MongoDB: {e}")
+            
+            temp_state_file = None
+            if db_state:
+                try:
+                    fd, path = tempfile.mkstemp(suffix=".json", prefix="playwright_state_")
+                    os.close(fd)
+                    temp_state_file = Path(path)
+                    with open(temp_state_file, "w", encoding="utf-8") as f:
+                        json.dump(db_state, f)
+                    storage_state_param = str(temp_state_file)
+                except Exception as e:
+                    logger.error(f"Failed to create temp state file: {e}")
+                    storage_state_param = None
+            else:
+                # Load stored session cookies if state exists locally
                 with STATE_LOCK:
-                    self.context = self.browser.new_context(
-                        storage_state=str(self.state_path),
-                        user_agent=user_agent
-                    )
+                    state_exists = self.state_path.exists()
+                if state_exists:
+                    logger.info(f"Loading session context state from local file: {self.state_path}")
+                    storage_state_param = str(self.state_path)
+                else:
+                    storage_state_param = None
+            
+            if storage_state_param:
+                self.context = self.browser.new_context(
+                    storage_state=storage_state_param,
+                    user_agent=user_agent
+                )
+                if temp_state_file and temp_state_file.exists():
+                    try:
+                        temp_state_file.unlink()
+                    except Exception:
+                        pass
             else:
                 self.context = self.browser.new_context(
                     user_agent=user_agent
@@ -109,10 +147,32 @@ class SecureBrowserDriver:
         Saves authenticated state local cookie storage representation securely.
         """
         if not self.cdp_address and self.context:
+            from src.db import get_db, current_user_id_var
+            import time
+            
+            user_id = current_user_id_var.get()
+            if user_id:
+                try:
+                    state_dict = self.context.storage_state()
+                    db = get_db()
+                    db["browser_states"].update_one(
+                        {"user_id": user_id},
+                        {"$set": {
+                            "state": state_dict,
+                            "updated_at": time.time()
+                        }},
+                        upsert=True
+                    )
+                    logger.info(f"Persisted browser session cookies to MongoDB for user: {user_id}")
+                    return
+                except Exception as e:
+                    logger.error(f"Failed to save browser state to MongoDB: {e}")
+            
             with STATE_LOCK:
                 self.state_path.parent.mkdir(parents=True, exist_ok=True)
                 self.context.storage_state(path=str(self.state_path))
-            logger.info(f"Persisted browser session cookies to {self.state_path}")
+            logger.info(f"Persisted browser session cookies locally to {self.state_path}")
+
 
     def close(self):
         if self.context and not self.cdp_address:

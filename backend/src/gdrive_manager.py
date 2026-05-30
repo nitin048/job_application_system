@@ -17,19 +17,38 @@ logger = logging.getLogger(__name__)
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 class GoogleDriveManager:
-    def __init__(self, client_secrets_path: str, token_path: str, config: JobAppConfig):
+    def __init__(self, client_secrets_path: str = None, token_path: str = None, config: JobAppConfig = None,
+                 client_secrets_content: str | dict = None, token_content: str | dict = None, on_token_change = None):
         self.client_secrets_path = client_secrets_path
         self.token_path = token_path
         self.config = config
+        self.client_secrets_content = client_secrets_content
+        self.token_content = token_content
+        self.on_token_change = on_token_change
         self.creds = None
         self.service = None
 
     def load_credentials(self) -> bool:
         """
-        Loads saved user credentials from the local token.json file.
+        Loads saved user credentials from token_content or the local token.json file.
         Returns True if credentials are valid (or successfully refreshed), False otherwise.
         """
-        if os.path.exists(self.token_path):
+        import json
+        self.creds = None
+
+        # 1. Try loading from token_content (dict or json string) first
+        if self.token_content:
+            try:
+                token_data = self.token_content
+                if isinstance(token_data, str):
+                    token_data = json.loads(token_data)
+                self.creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            except Exception as e:
+                logger.warning(f"Failed to parse token_content: {e}")
+                self.creds = None
+
+        # 2. Fallback to physical token file
+        if not self.creds and self.token_path and os.path.exists(self.token_path):
             try:
                 self.creds = Credentials.from_authorized_user_file(self.token_path, SCOPES)
             except Exception as e:
@@ -41,9 +60,25 @@ class GoogleDriveManager:
                 try:
                     logger.info("Google Drive token expired. Attempting refresh...")
                     self.creds.refresh(Request())
-                    os.makedirs(os.path.dirname(self.token_path), exist_ok=True)
-                    with open(self.token_path, 'w', encoding='utf-8') as token:
-                        token.write(self.creds.to_json())
+                    
+                    token_json_str = self.creds.to_json()
+                    
+                    # Callback to update config in MongoDB
+                    if self.on_token_change:
+                        try:
+                            self.on_token_change(token_json_str)
+                        except Exception as cb_err:
+                            logger.error(f"Failed on_token_change callback: {cb_err}")
+
+                    # Update local file for backward compatibility if path exists
+                    if self.token_path:
+                        try:
+                            os.makedirs(os.path.dirname(self.token_path), exist_ok=True)
+                            with open(self.token_path, 'w', encoding='utf-8') as token:
+                                token.write(token_json_str)
+                        except Exception as f_err:
+                            logger.warning(f"Could not write refreshed token back to file: {f_err}")
+                            
                     return True
                 except Exception as e:
                     logger.error(f"Failed to refresh Google Drive token: {e}")
@@ -55,18 +90,25 @@ class GoogleDriveManager:
         """
         Launches the local desktop Google OAuth authentication flow.
         Optionally uses url_callback to pass the authorization URL back to the caller.
-        Saves the resulting authentication tokens to token_path.
+        Saves the resulting authentication tokens.
         """
+        import json
         import wsgiref.simple_server
         import webbrowser
         from google_auth_oauthlib.flow import _RedirectWSGIApp, _WSGIRequestHandler
         from google_auth_oauthlib.flow import WSGITimeoutError
 
-        if not os.path.exists(self.client_secrets_path):
-            raise FileNotFoundError(f"Google Client Secrets credentials file not found at: {self.client_secrets_path}. Please download it from the Google Cloud Console.")
+        if not self.client_secrets_content and (not self.client_secrets_path or not os.path.exists(self.client_secrets_path)):
+            raise FileNotFoundError("Google Client Secrets credentials not found.")
             
         logger.info("Initializing Google Drive OAuth flow server...")
-        flow = InstalledAppFlow.from_client_secrets_file(self.client_secrets_path, SCOPES)
+        if self.client_secrets_content:
+            client_config = self.client_secrets_content
+            if isinstance(client_config, str):
+                client_config = json.loads(client_config)
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(self.client_secrets_path, SCOPES)
         
         # Setup WSGI app and server
         success_message = "Google Drive Authentication completed successfully! You can close this tab and return to the application dashboard."
@@ -104,12 +146,25 @@ class GoogleDriveManager:
             flow.fetch_token(authorization_response=authorization_response)
             self.creds = flow.credentials
             
-            # Save token
-            os.makedirs(os.path.dirname(self.token_path), exist_ok=True)
-            with open(self.token_path, 'w', encoding='utf-8') as token:
-                token.write(self.creds.to_json())
+            token_json_str = self.creds.to_json()
+            
+            # Callback to update config in MongoDB
+            if self.on_token_change:
+                try:
+                    self.on_token_change(token_json_str)
+                except Exception as cb_err:
+                    logger.error(f"Failed on_token_change callback: {cb_err}")
+
+            # Update local file for backward compatibility if path exists
+            if self.token_path:
+                try:
+                    os.makedirs(os.path.dirname(self.token_path), exist_ok=True)
+                    with open(self.token_path, 'w', encoding='utf-8') as token:
+                        token.write(token_json_str)
+                except Exception as f_err:
+                    logger.warning(f"Could not write token back to file: {f_err}")
                 
-            logger.info(f"Google authorization token saved successfully to {self.token_path}")
+            logger.info("Google authorization token saved successfully.")
             self.service = build('drive', 'v3', credentials=self.creds)
             
             # Proactively create the _resume root folder for user validation
