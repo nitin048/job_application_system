@@ -34,29 +34,42 @@ class SecureBrowserDriver:
     def start(self):
         self.playwright = sync_playwright().start()
         
+        use_cdp = False
         if self.cdp_address:
-            cdp_target = self.cdp_address.strip()
-            # If only digits, treat as local port
-            if cdp_target.isdigit():
-                port = int(cdp_target)
-                if not (1 <= port <= 65535):
-                    raise ValueError(f"Invalid CDP port: '{cdp_target}' is out of range (must be 1-65535). Please correct this in Secrets & Keys.")
-                cdp_target = f"127.0.0.1:{port}"
-            else:
-                if ":" in cdp_target:
-                    host, port_str = cdp_target.rsplit(":", 1)
-                    if port_str.isdigit():
-                        port = int(port_str)
-                        if not (1 <= port <= 65535):
-                            raise ValueError(f"Invalid CDP port: '{port_str}' in '{cdp_target}' is out of range (must be 1-65535). Please correct this in Secrets & Keys.")
+            try:
+                cdp_target = self.cdp_address.strip()
+                # If only digits, treat as local port
+                if cdp_target.isdigit():
+                    port = int(cdp_target)
+                    if not (1 <= port <= 65535):
+                        raise ValueError(f"CDP port '{cdp_target}' is out of range (1-65535).")
+                    cdp_target = f"127.0.0.1:{port}"
                 else:
-                    cdp_target = f"{cdp_target}:9222"
+                    if ":" in cdp_target:
+                        host, port_str = cdp_target.rsplit(":", 1)
+                        if port_str.isdigit():
+                            port = int(port_str)
+                            if not (1 <= port <= 65535):
+                                raise ValueError(f"CDP port '{port_str}' in '{cdp_target}' is out of range (1-65535).")
+                    else:
+                        cdp_target = f"{cdp_target}:9222"
 
-            logger.info(f"Connecting to browser via CDP: {cdp_target}")
-            self.browser = self.playwright.chromium.connect_over_cdp(f"http://{cdp_target}")
-            # Get existing context if active or default to new
-            self.context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
-        else:
+                logger.info(f"Connecting to browser via CDP: {cdp_target}")
+                self.browser = self.playwright.chromium.connect_over_cdp(f"http://{cdp_target}")
+                self.context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
+                use_cdp = True
+            except Exception as e:
+                logger.warning(f"CDP browser connection failed ({e}). Falling back to standalone Chromium context.")
+                self.cdp_address = ""  # Clear so close() shuts down standalone browser properly
+                if self.browser:
+                    try:
+                        self.browser.close()
+                    except Exception:
+                        pass
+                self.browser = None
+                self.context = None
+
+        if not use_cdp:
             # Standalone local Chromium with user-like slow_mo delay
             logger.info("Initializing standalone Chromium context with slow_mo delay")
             self.browser = self.playwright.chromium.launch(
