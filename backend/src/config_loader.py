@@ -19,6 +19,7 @@ class SearchParameters(BaseModel):
     titleBlacklist: list[str] = Field(default_factory=list)
     candidate_experience_years: float | None = 0.0
     candidate_skills: list[str] = Field(default_factory=list)
+    target_portals: dict[str, bool] = Field(default_factory=lambda: {"naukri": True, "linkedin": True, "indeed": True})
 
 class PersonalDetails(BaseModel):
     first_name: str

@@ -16,6 +16,10 @@ search_parameters:
   apply_once_at_company: true
   companyBlacklist: []
   titleBlacklist: []
+  target_portals:
+    naukri: true
+    linkedin: true
+    indeed: true
 candidate_identity:
   personal_details:
     first_name: ""

@@ -314,6 +314,10 @@ class TestJobApplicationSystem(unittest.TestCase):
     def test_parallel_scan(self):
         from unittest.mock import patch
         from src.job_crawler import JobCrawler
+        from src.providers.naukri_provider import NaukriProvider
+        
+        # Enable only naukri in test configurations to keep call counts consistent
+        self.config.search_parameters.target_portals = {"naukri": True, "linkedin": False, "indeed": False}
         
         crawler = JobCrawler(self.config)
         
@@ -337,28 +341,27 @@ class TestJobApplicationSystem(unittest.TestCase):
         }
         
         def mock_fetch(*args, **kwargs):
-            if len(args) >= 1 and isinstance(args[0], JobCrawler):
+            if len(args) > 0 and not isinstance(args[0], str):
                 pos = args[1]
                 loc = args[2]
                 cache = args[3] if len(args) > 3 else kwargs.get("cache")
-                on_job_found_cb = args[4] if len(args) > 4 else kwargs.get("on_job_found_cb")
+                process_listing_cb = args[4] if len(args) > 4 else kwargs.get("process_listing_cb")
             else:
                 pos = args[0]
                 loc = args[1]
                 cache = args[2] if len(args) > 2 else kwargs.get("cache")
-                on_job_found_cb = args[3] if len(args) > 3 else kwargs.get("on_job_found_cb")
+                process_listing_cb = args[3] if len(args) > 3 else kwargs.get("process_listing_cb")
                 
             raw_results = mock_listings.get((pos, loc), [])
             scored_results = []
             for raw in raw_results:
-                scored = crawler._process_and_score_listing(raw)
-                if scored:
-                    scored_results.append(scored)
-                    if on_job_found_cb:
-                        on_job_found_cb(scored)
+                if process_listing_cb:
+                    processed = process_listing_cb(raw)
+                    if processed:
+                        scored_results.append(processed)
             return scored_results
             
-        with patch.object(JobCrawler, "_fetch_naukri_listings", side_effect=mock_fetch) as mock_fetch_listings:
+        with patch.object(NaukriProvider, "search_jobs", side_effect=mock_fetch) as mock_fetch_listings:
             results = crawler.scan_jobs()
             
             # Assert all 4 queries were executed
