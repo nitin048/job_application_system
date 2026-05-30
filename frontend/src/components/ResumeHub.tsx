@@ -507,7 +507,10 @@ export default function ResumeHub({ showToast }: ResumeHubProps) {
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex gap-1.5">
                           <button
-                            onClick={() => window.open(`/api/jobs/some_id/tailor/view?path=${encodeURIComponent(file.path)}`, "_blank")}
+                            onClick={() => {
+                              const configVal = sessionStorage.getItem("aegis_flow_config") || "";
+                              window.open(`/api/jobs/some_id/tailor/view?path=${encodeURIComponent(file.path)}&config=${encodeURIComponent(configVal)}`, "_blank");
+                            }}
                             title="View PDF"
                             className="p-1.5 bg-zinc-950 border border-zinc-850 text-zinc-400 hover:text-white rounded hover:bg-zinc-900 transition cursor-pointer"
                           >
@@ -521,7 +524,10 @@ export default function ResumeHub({ showToast }: ResumeHubProps) {
                             <Scale size={12} />
                           </button>
                           <button
-                            onClick={() => (window.location.href = `/api/jobs/some_id/tailor/download?path=${encodeURIComponent(file.path)}&filename=${encodeURIComponent(file.filename)}`)}
+                            onClick={() => {
+                              const configVal = sessionStorage.getItem("aegis_flow_config") || "";
+                              window.location.href = `/api/jobs/some_id/tailor/download?path=${encodeURIComponent(file.path)}&filename=${encodeURIComponent(file.filename)}&config=${encodeURIComponent(configVal)}`;
+                            }}
                             title="Download PDF"
                             className="p-1.5 bg-zinc-950 border border-zinc-850 text-zinc-400 hover:text-white rounded hover:bg-zinc-900 transition cursor-pointer"
                           >

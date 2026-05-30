@@ -9,7 +9,7 @@ import logging
 import re as _re
 from pathlib import Path
 from typing import Dict, Any, Optional
-from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File
+from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -27,6 +27,41 @@ from src.gdrive_manager import GoogleDriveManager
 from src.crypto_manager import encrypt_value, decrypt_value, is_encrypted
 
 app = FastAPI(title="Job Application System API")
+
+import contextvars
+import urllib.parse
+from config.constants import session_config_var as consts_session_var
+from src.config_loader import session_config_var as loader_session_var
+
+@app.middleware("http")
+async def session_config_middleware(request: Request, call_next):
+    # Retrieve header or query param
+    session_config_header = request.headers.get("X-Session-Config")
+    session_config_param = request.query_params.get("config")
+    
+    session_config = None
+    raw_config = session_config_header or session_config_param
+    
+    if raw_config:
+        try:
+            try:
+                session_config = json.loads(raw_config)
+            except json.JSONDecodeError:
+                decoded = urllib.parse.unquote(raw_config)
+                session_config = json.loads(decoded)
+        except Exception:
+            pass
+            
+    # Set the ContextVar tokens
+    token1 = consts_session_var.set(session_config)
+    token2 = loader_session_var.set(session_config)
+    
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        consts_session_var.reset(token1)
+        loader_session_var.reset(token2)
 
 import traceback
 import time
@@ -87,37 +122,66 @@ if jobs_json_path.exists():
     except Exception:
         jobs_cache = []
 
-def run_background_task(command: str):
+import uuid
+import tempfile
+
+def run_background_task(command: str, session_config: dict | None = None):
     """
     Executes a shell command in the background, capturing stdout/stderr into the log buffer.
+    Supports session-isolated configuration.
     """
     global log_buffer
     log_buffer.clear()
     log_buffer.append(f"Starting execution: {command}\n")
     
-    # Run uv run python main.py command
+    temp_file_path = None
     env = os.environ.copy()
     env["PATH"] = f"{Path.home()}/.local/bin:{env.get('PATH', '')}"
     
-    process = subprocess.Popen(
-        command,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=str(ROOT_DIR),
-        env=env
-    )
-    
-    for line in iter(process.stdout.readline, ""):
-        log_buffer.append(line)
-        # Cap log buffer size
-        if len(log_buffer) > 1000:
-            log_buffer.pop(0)
+    if session_config:
+        try:
+            # Create a secure temporary file inside backend/data/
+            data_dir = ROOT_DIR / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            fd, path = tempfile.mkstemp(suffix=".json", prefix="temp_config_", dir=str(data_dir))
+            os.close(fd)
+            temp_file_path = Path(path)
             
-    process.stdout.close()
-    return_code = process.wait()
-    log_buffer.append(f"\nExecution finished. Return code: {return_code}\n")
+            with open(temp_file_path, "w", encoding="utf-8") as f:
+                json.dump(session_config, f)
+                
+            env["AEGIS_SESSION_CONFIG_PATH"] = str(temp_file_path)
+            log_buffer.append("Session configuration bound to environment.\n")
+        except Exception as e:
+            log_buffer.append(f"Warning: Failed to bind session configuration: {e}\n")
+            
+    try:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(ROOT_DIR),
+            env=env
+        )
+        
+        for line in iter(process.stdout.readline, ""):
+            log_buffer.append(line)
+            # Cap log buffer size
+            if len(log_buffer) > 1000:
+                log_buffer.pop(0)
+                
+        process.stdout.close()
+        return_code = process.wait()
+        log_buffer.append(f"\nExecution finished. Return code: {return_code}\n")
+    finally:
+        # Clean up temporary file
+        if temp_file_path and temp_file_path.exists():
+            try:
+                temp_file_path.unlink()
+            except Exception as clean_err:
+                log_buffer.append(f"Warning: Failed to clean up session file: {clean_err}\n")
 
 class FrontendErrorRequest(BaseModel):
     message: str
@@ -229,70 +293,10 @@ class ConfigUpdateRequest(BaseModel):
 @app.post("/api/config")
 def update_config(payload: ConfigUpdateRequest):
     """
-    Updates config/searches.yaml and config/constants.py.
+    Simulates configuration update. Since configuration is session-isolated
+    and managed in browser sessionStorage, we bypass physical disk writes.
     """
-    # 1. Write searches.yaml
-    yaml_path = ROOT_DIR / "config" / "searches.yaml"
-    with open(yaml_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(payload.searches, f, default_flow_style=False, sort_keys=False)
-
-    # 2. Write constants.py
-    constants_path = ROOT_DIR / "config" / "constants.py"
-    c = payload.constants
-    
-    # Secure defaults
-    resume_path = c.get("RESUME_PATH", "")
-    modified_resume_path = c.get("MODIFIED_RESUME_PATH", "")
-    username = c.get("USERNAME", "")
-    mobile = c.get("MOBILE", "")
-    update_pdf_hash = "True" if c.get("UPDATE_PDF_HASH") else "False"
-    headed = "True" if c.get("AGENT_BROWSER_HEADED") else "False"
-    cdp = c.get("AGENT_BROWSER_CDP", "")
-    gdrive_sync_enabled = "True" if c.get("GDRIVE_SYNC_ENABLED") else "False"
-    gdrive_client_secrets_path = c.get("GDRIVE_CLIENT_SECRETS_PATH", "config/credentials.json")
-    gdrive_token_path = c.get("GDRIVE_TOKEN_PATH", "data/token.json")
-    smtp_host = c.get("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = str(c.get("SMTP_PORT", "587"))
-    smtp_user = c.get("SMTP_USER", "")
-
-    # Encrypt sensitive values before writing to disk
-    password = encrypt_value(c.get("PASSWORD", ""))
-    gemini_key = encrypt_value(c.get("GEMINI_API_KEY", ""))
-    solver_key = encrypt_value(c.get("SOLVER_API_KEY", ""))
-    smtp_password = encrypt_value(c.get("SMTP_PASSWORD", ""))
-
-    constants_content = f"""import os
-from src.crypto_manager import decrypt_value
-
-# Naukri Manipulation Constants
-RESUME_PATH = os.getenv("RESUME_PATH", r"{resume_path}")
-MODIFIED_RESUME_PATH = os.getenv("MODIFIED_RESUME_PATH", r"{modified_resume_path}")
-USERNAME = os.getenv("NAUKRI_USERNAME", "{username}")
-PASSWORD = decrypt_value(os.getenv("NAUKRI_PASSWORD", "{password}"))
-MOBILE = os.getenv("NAUKRI_MOBILE", "{mobile}")
-UPDATE_PDF_HASH = {update_pdf_hash}
-
-# LLM API Config
-GEMINI_API_KEY = decrypt_value(os.getenv("GEMINI_API_KEY", "{gemini_key}"))
-SOLVER_API_KEY = decrypt_value(os.getenv("SOLVER_API_KEY", "{solver_key}"))
-
-# Browser settings
-AGENT_BROWSER_HEADED = os.getenv("AGENT_BROWSER_HEADED", "{headed}") == "True"
-AGENT_BROWSER_CDP = os.getenv("AGENT_BROWSER_CDP", "{cdp}")
-
-# Google Drive Sync Config
-GDRIVE_SYNC_ENABLED = {gdrive_sync_enabled}
-GDRIVE_CLIENT_SECRETS_PATH = os.getenv("GDRIVE_CLIENT_SECRETS_PATH", r"{gdrive_client_secrets_path}")
-GDRIVE_TOKEN_PATH = os.getenv("GDRIVE_TOKEN_PATH", r"{gdrive_token_path}")
-
-# SMTP Email Config
-SMTP_HOST = os.getenv("SMTP_HOST", "{smtp_host}")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "{smtp_port}"))
-SMTP_USER = os.getenv("SMTP_USER", "{smtp_user}")
-SMTP_PASSWORD = decrypt_value(os.getenv("SMTP_PASSWORD", "{smtp_password}"))
-"""
-    constants_path.write_text(constants_content, encoding="utf-8")
-    return {"status": "success", "message": "Configurations updated and sensitive fields encrypted successfully"}
+    return {"status": "success", "message": "Configurations simulated update success"}
 
 class RunRequest(BaseModel):
     action: str
@@ -306,7 +310,9 @@ def run_action(payload: RunRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="Invalid action type")
         
     cmd = f"uv run python main.py --action {payload.action}"
-    background_tasks.add_task(run_background_task, cmd)
+    
+    active_config = loader_session_var.get()
+    background_tasks.add_task(run_background_task, cmd, active_config)
     return {"status": "started", "message": f"Action {payload.action} started in the background."}
 
 @app.get("/api/logs")
@@ -324,7 +330,11 @@ def get_jobs():
     global jobs_cache
     return {"jobs": jobs_cache}
 
-def run_scan_in_background():
+def run_scan_in_background(session_config: dict | None):
+    # Set context variables in background thread context
+    token1 = consts_session_var.set(session_config)
+    token2 = loader_session_var.set(session_config)
+    
     global is_scanning, jobs_cache
     is_scanning = True
     
@@ -383,6 +393,8 @@ def run_scan_in_background():
     except Exception as e:
         logger.error(f"Background scan error: {e}")
     finally:
+        consts_session_var.reset(token1)
+        loader_session_var.reset(token2)
         is_scanning = False
 
 @app.post("/api/jobs/scan")
@@ -394,7 +406,8 @@ def scan_jobs(background_tasks: BackgroundTasks):
     if is_scanning:
         return {"status": "scanning", "message": "A job scan is already running."}
     
-    background_tasks.add_task(run_scan_in_background)
+    active_config = loader_session_var.get()
+    background_tasks.add_task(run_scan_in_background, active_config)
     return {"status": "started", "message": "Job scan started in the background."}
 
 @app.get("/api/jobs/scan/status")
@@ -867,8 +880,14 @@ def _run_apply_inprocess(job_id: str):
 def get_gdrive_config():
     """
     Parses and returns Google Drive config variables from config/constants.py.
-    This reads config/constants.py as plain text to avoid caching issues with standard imports.
+    Checks imported constants first for dynamic session support.
     """
+    try:
+        from config.constants import GDRIVE_SYNC_ENABLED, GDRIVE_CLIENT_SECRETS_PATH, GDRIVE_TOKEN_PATH
+        return GDRIVE_SYNC_ENABLED, GDRIVE_CLIENT_SECRETS_PATH, GDRIVE_TOKEN_PATH
+    except Exception:
+        pass
+    
     constants_path = ROOT_DIR / "config" / "constants.py"
     sync_enabled = False
     client_secrets_path = "config/credentials.json"
@@ -918,13 +937,10 @@ gdrive_auth_url = None
 gdrive_auth_error = None
 
 def enable_gdrive_sync_in_constants():
-    constants_path = ROOT_DIR / "config" / "constants.py"
-    if constants_path.exists():
-        content = constants_path.read_text(encoding="utf-8")
-        import re
-        if re.search(r'^GDRIVE_SYNC_ENABLED\s*=\s*False', content, re.MULTILINE):
-            content = re.sub(r'^GDRIVE_SYNC_ENABLED\s*=\s*False', 'GDRIVE_SYNC_ENABLED = True', content, flags=re.MULTILINE)
-            constants_path.write_text(content, encoding="utf-8")
+    """
+    Simulated. Google Drive sync is configured dynamically inside the session context.
+    """
+    pass
 
 def run_gdrive_auth_flow(secrets_path: str, token_path: str):
     global gdrive_auth_url, gdrive_auth_error
@@ -1156,8 +1172,8 @@ def scan_resume_for_filters():
 @app.post("/api/upload/resume")
 async def upload_resume(file: UploadFile = File(...)):
     """
-    Accepts a PDF resume upload, saves it to the assets/ folder, and
-    auto-updates RESUME_PATH in config/constants.py.
+    Accepts a PDF resume upload, saves it to the assets/ folder.
+    Bypasses updating constants.py on disk due to sessionStorage isolation.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted for resume upload.")
@@ -1171,24 +1187,11 @@ async def upload_resume(file: UploadFile = File(...)):
     finally:
         await file.close()
 
-    # Auto-update RESUME_PATH in constants.py
-    constants_path = ROOT_DIR / "config" / "constants.py"
-    if constants_path.exists():
-        import re
-        content = constants_path.read_text(encoding="utf-8")
-        new_path = str(dest_path).replace("\\", "/")
-        content = re.sub(
-            r'^RESUME_PATH\s*=.*$',
-            f'RESUME_PATH = os.getenv("RESUME_PATH", r"{new_path}")',
-            content, flags=re.MULTILINE
-        )
-        constants_path.write_text(content, encoding="utf-8")
-
     return {
         "status": "success",
         "filename": file.filename,
         "path": str(dest_path),
-        "message": f"Resume '{file.filename}' uploaded to assets/ and RESUME_PATH updated."
+        "message": f"Resume '{file.filename}' uploaded to assets/."
     }
 
 
