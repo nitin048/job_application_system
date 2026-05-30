@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+import re
 from typing import List, Dict, Any
 from src.providers.base_provider import BasePortalProvider
 from src.discovery import normalize_url
@@ -95,7 +96,8 @@ class IndeedProvider(BasePortalProvider):
                             "location": loc_text,
                             "description": job_desc,
                             "url": clean_url,
-                            "is_easy_apply": is_easy_apply
+                            "is_easy_apply": is_easy_apply,
+                            "portal": "indeed"
                         }
 
                         if process_listing_cb:
@@ -169,7 +171,8 @@ class IndeedProvider(BasePortalProvider):
                 "location": location,
                 "description": f"We are seeking a junior {position} with high potential. Build, test, and maintain APIs, and collaborate on data modeling initiatives.",
                 "url": f"https://www.indeed.com/jobs/view/indeed_mock_1",
-                "is_easy_apply": True
+                "is_easy_apply": True,
+                "portal": "indeed"
             },
             {
                 "title": f"Lead {position}",
@@ -177,7 +180,8 @@ class IndeedProvider(BasePortalProvider):
                 "location": location,
                 "description": f"Enforce architectural standards across our financial software engineering team. Master design patterns, scalable architectures, and AWS integrations.",
                 "url": f"https://www.indeed.com/jobs/view/indeed_mock_2",
-                "is_easy_apply": False
+                "is_easy_apply": False,
+                "portal": "indeed"
             }
         ]
         results = []

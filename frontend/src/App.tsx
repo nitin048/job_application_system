@@ -56,6 +56,7 @@ export default function App() {
       const data = await res.json();
       setConfig(data);
       setLocalConfig(JSON.parse(JSON.stringify(data))); // Deep clone for local edits
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(data));
     } catch (err: any) {
       console.error(err);
       showToast("Error loading configurations.", "error");
@@ -203,12 +204,54 @@ export default function App() {
 
   // Job Scanning Action
   const triggerJobScan = async () => {
+    const sessionConfigStr = sessionStorage.getItem("aegis_flow_config");
+    let activeConfig = localConfig || config;
+    if (sessionConfigStr) {
+      try {
+        activeConfig = JSON.parse(sessionConfigStr);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const targetPortals = activeConfig?.searches?.search_parameters?.target_portals || {};
+    const portalIds = ["linkedin", "instahyre", "cutshort", "wellfound", "hirist", "naukri", "indeed", "foundit", "shine", "timesjobs", "glassdoor"];
+    const activePortals = portalIds.filter(id => targetPortals[id] !== false);
+
+    if (activePortals.length === 0) {
+      showToast("Please configure/enable at least one job portal in 'Search Filters' to scan.", "error");
+      return;
+    }
+
+    const consts = activeConfig?.constants || {};
+    const hasNaukriCreds = !!(consts.USERNAME && consts.PASSWORD);
+    const otherPortals = [
+      "LINKEDIN", "INSTAHYRE", "CUTSHORT", "WELLFOUND", "HIRIST", 
+      "INDEED", "FOUNDIT", "SHINE", "TIMESJOBS", "GLASSDOOR"
+    ];
+    const hasAnyOtherCreds = otherPortals.some(portal => {
+      return !!(consts[`${portal}_USERNAME`] && consts[`${portal}_PASSWORD`]);
+    });
+
+    if (!hasNaukriCreds && !hasAnyOtherCreds) {
+      showToast("Please configure credentials (username & password) for at least one portal in 'Secrets & Keys' to scan.", "error");
+      return;
+    }
+
     setIsScanning(true);
     setJobs([]);
     showToast("Starting background job scan...", "success");
 
     try {
-      const res = await fetch("/api/jobs/scan", { method: "POST" });
+      const headers: Record<string, string> = {};
+      if (activeConfig) {
+        headers["X-Session-Config"] = JSON.stringify(activeConfig);
+      }
+
+      const res = await fetch("/api/jobs/scan", {
+        method: "POST",
+        headers
+      });
       if (!res.ok) throw new Error("Job scan request failed.");
       const data = await res.json();
       if (data.status === "scanning") {

@@ -105,6 +105,8 @@ def global_exception_handler(request, exc: Exception):
 # Assets folder for user-uploaded files
 ASSETS_DIR = ROOT_DIR / "assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+RESUME_DIR = ASSETS_DIR / "resume"
+RESUME_DIR.mkdir(parents=True, exist_ok=True)
 SCREENSHOTS_DIR = ROOT_DIR / "data" / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -236,7 +238,7 @@ def get_config():
         # Direct regex match to parse configuration keys safely without eval
         keys = [
             "RESUME_PATH", "MODIFIED_RESUME_PATH", "USERNAME", "PASSWORD", 
-            "MOBILE", "UPDATE_PDF_HASH", "GEMINI_API_KEY", "SOLVER_API_KEY", 
+            "UPDATE_PDF_HASH", "GEMINI_API_KEY", "SOLVER_API_KEY", 
             "AGENT_BROWSER_HEADED", "AGENT_BROWSER_CDP",
             "GDRIVE_SYNC_ENABLED", "GDRIVE_CLIENT_SECRETS_PATH", "GDRIVE_TOKEN_PATH",
             "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD"
@@ -1051,49 +1053,88 @@ def scan_resume_for_filters():
     import re
     import pypdf
     import google.generativeai as genai
+    from config import constants as consts
     
-    # Read config path variables
-    sync_enabled, secrets_path, token_path = get_gdrive_config()
-    constants_path = ROOT_DIR / "config" / "constants.py"
+    resume_path = consts.RESUME_PATH
+    gemini_key = consts.GEMINI_API_KEY
     
-    resume_path = ""
-    gemini_key = ""
-    if constants_path.exists():
-        content = constants_path.read_text(encoding="utf-8")
-        match_resume = re.search(r'^RESUME_PATH\s*=\s*(.*?)\s*$', content, re.MULTILINE)
-        if match_resume:
-            val = match_resume.group(1).strip()
-            # Resolve os.getenv if present
-            env_match = re.search(r'os\.getenv\(\s*["\']\w+["\']\s*,\s*(.*?)\s*\)', val)
-            if env_match:
-                val = env_match.group(1).strip()
-            if val.startswith(('"', "'")) and val.endswith(('"', "'")):
-                val = val[1:-1]
-            elif val.startswith("r") and val[1] in ('"', "'") and val.endswith(('"', "'")):
-                val = val[2:-1]
-            resume_path = val
-            
-        match_key = re.search(r'^GEMINI_API_KEY\s*=\s*(.*?)\s*$', content, re.MULTILINE)
-        if match_key:
-            val = match_key.group(1).strip()
-            env_match = re.search(r'os\.getenv\(\s*["\']\w+["\']\s*,\s*(.*?)\s*\)', val)
-            if env_match:
-                val = env_match.group(1).strip()
-            if val.startswith(('"', "'")) and val.endswith(('"', "'")):
-                val = val[1:-1]
-            gemini_key = val
-            
+    # Check constants.py statically as a fallback if not configured dynamically
     if not resume_path:
-        raise HTTPException(status_code=400, detail="RESUME_PATH is not configured in settings.")
+        constants_path = ROOT_DIR / "config" / "constants.py"
+        if constants_path.exists():
+            content = constants_path.read_text(encoding="utf-8")
+            match_resume = re.search(r'^RESUME_PATH\s*=\s*(.*?)\s*$', content, re.MULTILINE)
+            if match_resume:
+                val = match_resume.group(1).strip()
+                env_match = re.search(r'os\.getenv\(\s*["\']\w+["\']\s*,\s*(.*?)\s*\)', val)
+                if env_match:
+                    val = env_match.group(1).strip()
+                if val.startswith(('"', "'")) and val.endswith(('"', "'")):
+                    val = val[1:-1]
+                elif val.startswith("r") and val[1] in ('"', "'") and val.endswith(('"', "'")):
+                    val = val[2:-1]
+                resume_path = val
+                
+            match_key = re.search(r'^GEMINI_API_KEY\s*=\s*(.*?)\s*$', content, re.MULTILINE)
+            if match_key:
+                val = match_key.group(1).strip()
+                env_match = re.search(r'os\.getenv\(\s*["\']\w+["\']\s*,\s*(.*?)\s*\)', val)
+                if env_match:
+                    val = env_match.group(1).strip()
+                if val.startswith(('"', "'")) and val.endswith(('"', "'")):
+                    val = val[1:-1]
+                gemini_key = val
+
+    # Smart Auto-Detection Fallback!
+    # Check if configured path exists
+    def check_pdf_path(path):
+        if not path:
+            return None
+        p = Path(path)
+        if not p.is_absolute():
+            p = ROOT_DIR / p
+        return p if p.exists() else None
+
+    resolved_path = check_pdf_path(resume_path)
+    if not resolved_path:
+        detected_pdf = None
         
-    resolved_path = Path(resume_path)
-    if not resolved_path.is_absolute():
-        resolved_path = ROOT_DIR / resolved_path
-        
-    if not resolved_path.exists():
+        # 1. Search assets/resume/
+        resume_dir = ROOT_DIR / "assets" / "resume"
+        if resume_dir.exists():
+            pdfs = [f for f in resume_dir.iterdir() if f.is_file() and f.suffix.lower() == ".pdf"]
+            if pdfs:
+                detected_pdf = pdfs[0]
+                
+        # 2. Search assets/
+        if not detected_pdf:
+            assets_dir = ROOT_DIR / "assets"
+            if assets_dir.exists():
+                pdfs = [f for f in assets_dir.iterdir() if f.is_file() and f.suffix.lower() == ".pdf"]
+                if pdfs:
+                    detected_pdf = pdfs[0]
+                    
+        # 3. Search assets/resume_hub/original/
+        if not detected_pdf:
+            hub_dir = ROOT_DIR / "assets" / "resume_hub" / "original"
+            if hub_dir.exists():
+                pdfs = [f for f in hub_dir.iterdir() if f.is_file() and f.suffix.lower() == ".pdf"]
+                if pdfs:
+                    detected_pdf = pdfs[0]
+                    
+        if detected_pdf:
+            resume_path = str(detected_pdf)
+            resolved_path = detected_pdf
+            # Dynamic update inside ContextVar session config to bind to current user tab session
+            try:
+                consts.session_config_var.get()["constants"]["RESUME_PATH"] = resume_path
+            except Exception:
+                pass
+
+    if not resolved_path:
         raise HTTPException(
             status_code=400,
-            detail=f"Resume file not found at: {resolved_path}. Please check your credentials settings."
+            detail="Resume not found on system. Please upload to proceed."
         )
         
     # Extract text from PDF
@@ -1172,13 +1213,13 @@ def scan_resume_for_filters():
 @app.post("/api/upload/resume")
 async def upload_resume(file: UploadFile = File(...)):
     """
-    Accepts a PDF resume upload, saves it to the assets/ folder.
+    Accepts a PDF resume upload, saves it to the assets/resume/ folder.
     Bypasses updating constants.py on disk due to sessionStorage isolation.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted for resume upload.")
 
-    dest_path = ASSETS_DIR / file.filename
+    dest_path = RESUME_DIR / file.filename
     try:
         with open(dest_path, "wb") as out:
             shutil.copyfileobj(file.file, out)
@@ -1191,7 +1232,7 @@ async def upload_resume(file: UploadFile = File(...)):
         "status": "success",
         "filename": file.filename,
         "path": str(dest_path),
-        "message": f"Resume '{file.filename}' uploaded to assets/."
+        "message": f"Resume '{file.filename}' uploaded to assets/resume/."
     }
 
 
@@ -1246,15 +1287,29 @@ def list_assets():
 @app.delete("/api/assets/{filename}")
 def delete_asset(filename: str):
     """
-    Deletes a file from the assets/ folder and clears the matching
+    Deletes a file from the assets/resume/ or assets/ folder and clears the matching
     config key (RESUME_PATH) from constants.py when the resume is removed.
     """
     import re as _re
-    if not _re.match(r'^[\w\-\. ]+\.(pdf|json|docx)$', filename):
+    # Clean filename checks - allow common chars including parens and brackets
+    if not _re.match(r'^[\w\-\.\(\)\[\] ]+\.(pdf|json|docx)$', filename):
         raise HTTPException(status_code=400, detail="Invalid filename.")
-    file_path = ASSETS_DIR / filename
+    
+    # Check resume subfolder first
+    file_path = RESUME_DIR / filename
+    if not file_path.exists():
+        # Fall back to parent assets folder
+        file_path = ASSETS_DIR / filename
+        
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Asset file not found.")
+        
+    # Security constraint check: ensure path is inside ASSETS_DIR
+    try:
+        file_path.resolve().relative_to(ASSETS_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Access denied: File outside assets directory.")
+
     file_path.unlink()
 
     # Clear RESUME_PATH in constants.py if the deleted file was the resume
@@ -1269,7 +1324,7 @@ def delete_asset(filename: str):
             )
             constants_path.write_text(content, encoding="utf-8")
 
-    return {"status": "success", "message": f"'{filename}' deleted from assets/"}
+    return {"status": "success", "message": f"'{filename}' deleted safely."}
 
 
 @app.delete("/api/gdrive-credentials")

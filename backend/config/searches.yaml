@@ -17,9 +17,17 @@ search_parameters:
   companyBlacklist: []
   titleBlacklist: []
   target_portals:
-    naukri: true
     linkedin: true
+    instahyre: true
+    cutshort: true
+    wellfound: true
+    hirist: true
+    naukri: true
     indeed: true
+    foundit: true
+    shine: true
+    timesjobs: true
+    glassdoor: true
 candidate_identity:
   personal_details:
     first_name: ""

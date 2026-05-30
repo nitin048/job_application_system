@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { UploadCloud, Trash2, Eye, Loader2, Link, Image as ImageIcon, X, Trash } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { UploadCloud, Trash2, Eye, EyeOff, Loader2, Link, Image as ImageIcon, X, Trash, Pencil, Save, Lock, Shield } from "lucide-react";
 
 interface SecretsKeysProps {
   formData: any;
@@ -29,7 +29,35 @@ export default function SecretsKeys({
   const [lightboxImg, setLightboxImg] = useState("");
   const [lightboxCaption, setLightboxCaption] = useState("");
 
+  // Portal credentials edit mode
+  const [isPortalEditing, setIsPortalEditing] = useState(false);
+  // Track which password fields are currently being "peeked" (held down)
+  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
+
   const consts = formData?.constants || {};
+
+  // --- Frontend obfuscation helpers for localStorage ---
+  // Note: Real encryption happens server-side via Fernet in crypto_manager.py.
+  // This provides a basic base64 obfuscation layer in localStorage.
+  const obfuscate = (value: string): string => {
+    if (!value) return "";
+    if (value.startsWith("OBF::")) return value; // already obfuscated
+    try {
+      return "OBF::" + btoa(unescape(encodeURIComponent(value)));
+    } catch {
+      return value;
+    }
+  };
+
+  const deobfuscate = (value: string): string => {
+    if (!value) return "";
+    if (!value.startsWith("OBF::")) return value;
+    try {
+      return decodeURIComponent(escape(atob(value.slice(5))));
+    } catch {
+      return value;
+    }
+  };
 
   const handleFieldChange = (field: string, val: any) => {
     onChange({
@@ -117,7 +145,7 @@ export default function SecretsKeys({
       });
       if (!res.ok) throw new Error("Upload failed.");
       const resData = await res.json();
-      showToast("Resume uploaded successfully!", "success");
+      showToast("Resume uploaded successfully! Please click 'Save Settings' to save this path.", "success");
       
       const updatedConfig = {
         ...formData,
@@ -128,7 +156,6 @@ export default function SecretsKeys({
       };
       onChange(updatedConfig);
       sessionStorage.setItem("aegis_flow_config", JSON.stringify(updatedConfig));
-      await loadConfig();
     } catch (err: any) {
       console.error(err);
       showToast(err.message || "Failed to upload resume file.", "error");
@@ -149,7 +176,7 @@ export default function SecretsKeys({
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Deletion failed.");
-      showToast("Resume deleted from local server storage.", "success");
+      showToast("Resume deleted from local server storage. Please click 'Save Settings' to save this change.", "success");
       
       const updatedConfig = {
         ...formData,
@@ -160,7 +187,6 @@ export default function SecretsKeys({
       };
       onChange(updatedConfig);
       sessionStorage.setItem("aegis_flow_config", JSON.stringify(updatedConfig));
-      await loadConfig();
     } catch (err: any) {
       console.error(err);
       showToast(err.message || "Failed to delete resume.", "error");
@@ -303,41 +329,6 @@ export default function SecretsKeys({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-505">
-            Naukri Login Username (Email)
-          </label>
-          <input
-            type="text"
-            value={consts.USERNAME || ""}
-            onChange={(e) => handleFieldChange("USERNAME", e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-855 focus:border-indigo-500 text-xs px-3 py-2.5 rounded-lg outline-none text-zinc-200 transition"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-505">
-            Naukri Login Password
-          </label>
-          <input
-            type="password"
-            value={consts.PASSWORD || ""}
-            onChange={(e) => handleFieldChange("PASSWORD", e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-855 focus:border-indigo-500 text-xs px-3 py-2.5 rounded-lg outline-none text-zinc-200 transition"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-505">
-            Naukri Contact Mobile
-          </label>
-          <input
-            type="text"
-            value={consts.MOBILE || ""}
-            onChange={(e) => handleFieldChange("MOBILE", e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-855 focus:border-indigo-500 text-xs px-3 py-2.5 rounded-lg outline-none text-zinc-200 transition"
-          />
-        </div>
 
         {/* Resume Upload Zone */}
         <div className="flex flex-col gap-1.5 md:col-span-2">
@@ -591,6 +582,209 @@ export default function SecretsKeys({
             className="w-full bg-zinc-950 border border-zinc-855 focus:border-indigo-500 text-xs px-3 py-2.5 rounded-lg outline-none text-zinc-200 transition"
           />
         </div>
+
+        {/* Portal Authentication Secrets Header */}
+        <div className="md:col-span-2 border-t border-zinc-850 pt-5 mt-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-xs text-zinc-350 flex items-center gap-1.5">
+              🔑 Portal Authentication Credentials (Optional)
+            </h4>
+            <button
+              type="button"
+              onClick={() => {
+                if (isPortalEditing) {
+                  // Saving — obfuscate passwords in sessionStorage
+                  const currentConfig = JSON.parse(sessionStorage.getItem("aegis_flow_config") || "{}");
+                  const updatedConstants = { ...currentConfig.constants };
+                  const passwordFields = [
+                    "PASSWORD", "LINKEDIN_PASSWORD", "INSTAHYRE_PASSWORD", "CUTSHORT_PASSWORD",
+                    "WELLFOUND_PASSWORD", "HIRIST_PASSWORD", "INDEED_PASSWORD",
+                    "FOUNDIT_PASSWORD", "SHINE_PASSWORD", "TIMESJOBS_PASSWORD", "GLASSDOOR_PASSWORD"
+                  ];
+                  passwordFields.forEach(field => {
+                    const val = consts[field];
+                    if (val && !val.startsWith("OBF::")) {
+                      updatedConstants[field] = obfuscate(val);
+                    }
+                  });
+                  const newConfig = { ...currentConfig, constants: updatedConstants };
+                  sessionStorage.setItem("aegis_flow_config", JSON.stringify(newConfig));
+                  showToast("Portal credentials saved securely.", "success");
+                }
+                setIsPortalEditing(!isPortalEditing);
+                setVisiblePasswords(new Set());
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-lg border transition-all duration-200 cursor-pointer ${
+                isPortalEditing
+                  ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300"
+              }`}
+              title={isPortalEditing ? "Save & lock credentials" : "Edit credentials"}
+            >
+              {isPortalEditing ? (
+                <><Save size={12} /> Save & Lock</>
+              ) : (
+                <><Pencil size={12} /> Edit</>
+              )}
+            </button>
+          </div>
+          <p className="text-[10.5px] text-zinc-500 mt-1">
+            Provide optional credentials. If configured, Aegis Flow will automatically log in to perform deep discovery scrapes, otherwise it will safely fall back to public APIs.
+          </p>
+          <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3.5 mt-3 flex items-start gap-2.5">
+            <span className="text-xs">⚠️</span>
+            <div className="flex flex-col gap-0.5">
+              <strong className="text-[10.5px] font-bold text-amber-400">Important Credentials Disclaimer</strong>
+              <p className="text-[10px] text-zinc-400 leading-normal">
+                Please double-check and enter the correct login IDs and passwords for each configured portal. If incorrect credentials are saved, automated routines (such as deep crawls and search visibility bumps) will fail to authenticate or could trigger secondary security challenges.
+              </p>
+            </div>
+          </div>
+          {!isPortalEditing && (
+            <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-2.5 mt-2 flex items-center gap-2">
+              <Lock size={12} className="text-indigo-400 flex-shrink-0" />
+              <span className="text-[10px] text-indigo-300/80">
+                Credentials are locked. Click the <strong>Edit</strong> button above to modify.
+              </span>
+            </div>
+          )}
+        </div>
+
+        {[
+          { id: "LINKEDIN", label: "LinkedIn Jobs" },
+          { id: "INSTAHYRE", label: "Instahyre" },
+          { id: "CUTSHORT", label: "Cutshort" },
+          { id: "WELLFOUND", label: "Wellfound (AngelList)" },
+          { id: "HIRIST", label: "Hirist.tech" },
+          { id: "NAUKRI", label: "Naukri.com" },
+          { id: "INDEED", label: "Indeed India" },
+          { id: "FOUNDIT", label: "Foundit (Monster)" },
+          { id: "SHINE", label: "Shine.com" },
+          { id: "TIMESJOBS", label: "TimesJobs" },
+          { id: "GLASSDOOR", label: "Glassdoor Jobs" }
+        ].map((portal) => {
+          const isNaukri = portal.id === "NAUKRI";
+          const usernameVal = isNaukri ? consts.USERNAME : consts[`${portal.id}_USERNAME`];
+          const passwordVal = isNaukri ? consts.PASSWORD : consts[`${portal.id}_PASSWORD`];
+          const isConfigured = isNaukri ? !!(consts.USERNAME && consts.PASSWORD) : !!(consts[`${portal.id}_USERNAME`] && consts[`${portal.id}_PASSWORD`]);
+          const usernameField = isNaukri ? "USERNAME" : `${portal.id}_USERNAME`;
+          const passwordField = isNaukri ? "PASSWORD" : `${portal.id}_PASSWORD`;
+          const isPwdVisible = visiblePasswords.has(passwordField);
+
+          return (
+            <div key={portal.id} className={`md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-xl transition-all duration-200 ${
+              isPortalEditing
+                ? "bg-zinc-950/30 border-indigo-500/15"
+                : "bg-zinc-950/20 border-zinc-850/60"
+            }`}>
+              <div className="md:col-span-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {!isPortalEditing && <Shield size={12} className="text-zinc-600" />}
+                  <span className="text-xs font-bold text-zinc-350">{portal.label}</span>
+                </div>
+                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border transition-colors ${
+                  isConfigured 
+                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-450" 
+                    : "bg-zinc-900 border-zinc-800 text-zinc-550"
+                }`}>
+                  {isConfigured ? "✓ Configured" : "Not Configured"}
+                </span>
+              </div>
+
+              {/* --- EDIT MODE --- */}
+              {isPortalEditing ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Username / Email</label>
+                    <input
+                      type="text"
+                      value={usernameVal || ""}
+                      onChange={(e) => handleFieldChange(usernameField, e.target.value)}
+                      placeholder="Enter email or username"
+                      className="w-full bg-zinc-950 border border-zinc-850 focus:border-indigo-500 text-[11px] px-3 py-2 rounded-lg outline-none text-zinc-250 transition"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Password</label>
+                    <div className="relative">
+                      <input
+                        type={isPwdVisible ? "text" : "password"}
+                        value={passwordVal || ""}
+                        onChange={(e) => handleFieldChange(passwordField, e.target.value)}
+                        placeholder="Enter secure password"
+                        className="w-full bg-zinc-950 border border-zinc-850 focus:border-indigo-500 text-[11px] px-3 py-2 pr-9 rounded-lg outline-none text-zinc-250 transition"
+                      />
+                      {/* Eye button — hold to peek, release to hide */}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setVisiblePasswords(prev => new Set(prev).add(passwordField));
+                        }}
+                        onMouseUp={(e) => {
+                          e.preventDefault();
+                          setVisiblePasswords(prev => {
+                            const next = new Set(prev);
+                            next.delete(passwordField);
+                            return next;
+                          });
+                        }}
+                        onMouseLeave={() => {
+                          setVisiblePasswords(prev => {
+                            const next = new Set(prev);
+                            next.delete(passwordField);
+                            return next;
+                          });
+                        }}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          setVisiblePasswords(prev => new Set(prev).add(passwordField));
+                        }}
+                        onTouchEnd={(e) => {
+                          e.preventDefault();
+                          setVisiblePasswords(prev => {
+                            const next = new Set(prev);
+                            next.delete(passwordField);
+                            return next;
+                          });
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300 transition cursor-pointer rounded"
+                        title="Hold to reveal password"
+                      >
+                        {isPwdVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* --- READ-ONLY MODE --- */
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Username / Email</label>
+                    <div className="w-full bg-zinc-950/50 border border-zinc-850/50 text-[11px] px-3 py-2 rounded-lg text-zinc-400 select-none flex items-center gap-2">
+                      {usernameVal ? (
+                        <span className="text-zinc-300">{usernameVal}</span>
+                      ) : (
+                        <span className="text-zinc-600 italic">Not set</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Password</label>
+                    <div className="w-full bg-zinc-950/50 border border-zinc-850/50 text-[11px] px-3 py-2 rounded-lg text-zinc-400 select-none flex items-center gap-2">
+                      <Lock size={11} className="text-zinc-600 flex-shrink-0" />
+                      {passwordVal ? (
+                        <span className="text-zinc-500 tracking-widest">••••••••</span>
+                      ) : (
+                        <span className="text-zinc-600 italic">Not set</span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
 
         {/* Screenshots Card viewer */}
         <div className="md:col-span-2 border-t border-zinc-850 pt-5 mt-2 flex flex-col md:flex-row md:items-center justify-between gap-4">

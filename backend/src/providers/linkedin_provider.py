@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+import re
 from typing import List, Dict, Any
 from src.providers.base_provider import BasePortalProvider
 from src.discovery import normalize_url
@@ -103,7 +104,8 @@ class LinkedInProvider(BasePortalProvider):
                             "location": loc_text,
                             "description": job_desc,
                             "url": clean_url,
-                            "is_easy_apply": is_easy_apply
+                            "is_easy_apply": is_easy_apply,
+                            "portal": "linkedin"
                         }
 
                         if process_listing_cb:
@@ -180,7 +182,8 @@ class LinkedInProvider(BasePortalProvider):
                 "location": location,
                 "description": f"We are hiring a Senior {position} to build next-generation cloud native software. Requirements: strong experience with modern programming systems, databases, and microservices.",
                 "url": f"https://www.linkedin.com/jobs/view/linkedin_mock_1",
-                "is_easy_apply": True
+                "is_easy_apply": True,
+                "portal": "linkedin"
             },
             {
                 "title": f"Staff {position}",
@@ -188,7 +191,8 @@ class LinkedInProvider(BasePortalProvider):
                 "location": location,
                 "description": f"Join our scaling platform engineering department. Lead architecture designs, enforce high engineering standards, and collaborate on API systems.",
                 "url": f"https://www.linkedin.com/jobs/view/linkedin_mock_2",
-                "is_easy_apply": False
+                "is_easy_apply": False,
+                "portal": "linkedin"
             }
         ]
         results = []
@@ -202,4 +206,3 @@ class LinkedInProvider(BasePortalProvider):
                 results.append(raw)
         return results
 
-import re
