@@ -88,7 +88,7 @@ backend/assets/**/*.json
 backend/assets/resume_hub/
 backend/assets/target_employer_resume/
 backend/assets/*_resume/
-assets/
+/assets/
 
 # Temporary / scratch files
 scratch/reconstructed_*

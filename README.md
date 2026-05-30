@@ -51,28 +51,32 @@ An autonomous, end-to-end job board search, ingestion, compatibility scoring, an
 
 The application is structured as a decoupled architecture containing a modern React SPA client communicating over a JSON REST API with a FastAPI Python backend, coupled with a CLI interface for automation.
 
-![Decoupled System Architecture Diagram](/Users/nitinpradhan/.gemini/antigravity-ide/brain/958a82f2-4a4b-421a-b364-99c55e505118/system_structure_diagram_1780133276821.png)
+![Decoupled System Architecture Diagram](doc/assets/system_structure_diagram.png)
 
 ### System Workflow Diagram
 ```mermaid
 graph TD
-    A[Dashboard UI / static html] -->|Configure / Scan / Apply| B[FastAPI Web Server]
+    A[React Client Dashboard] -->|REST API Requests| B[FastAPI Web Server]
+    
+    %% Ingestion Flow
     B -->|Concurrent Threads| C[Parallel Job Ingestion]
     C -->|Stealth Scraping| D[Naukri Portal]
     C -->|Parse Details| E[BeautifulSoup4 Extractor]
     E -->|Evaluate Fit| F[Scoring Matrix]
-    F -->|Write Cache| G[(discovered_jobs.json)]
+    F -->|Write Cache| G[(backend/data/discovered_jobs.json)]
     
-    A -->|Upload Base Resume| H[Resume Hub Ingestion]
+    %% Resume Hub Flow
+    B -->|Process Upload| H[Resume Hub Ingestion]
     H -->|DOCX/PDF Extract| I[Text Parser]
-    I -->|Tailor Resume Request| J[AI Resume Customizer]
-    J -->|Query Prompt| K[Gemini API / Fallback Optimizer]
+    I -->|Tailor Request| J[AI Resume Customizer]
+    J -->|Query Prompt| K[Gemini API / Heuristic Fallback]
     K -->|Compile PDF| L[ReportLab Compiler]
-    L -->|Altered Hash PDF| M[(Local Resumes Vault)]
+    L -->|Write PDF| M[(backend/assets/ Resume Vault)]
     
-    A -->|Auto-Apply| N[Playwright Submissions Graph]
-    N -->|Fetch Vaulted PDF| M
-    N -->|Inject Antidetect| O[Playwright Headed Browser]
+    %% Submission Flow
+    B -->|Trigger Background Task| N[Playwright Submissions Graph]
+    N -->|Fetch PDF| M
+    N -->|Launch with Antidetect| O[Stealth Playwright Driver]
     O -->|Easy Apply| P[Auto-submit Form]
     O -->|Manual Apply| Q[Pause Browser for User Review]
 ```
