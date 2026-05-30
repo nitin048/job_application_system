@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2 } from "lucide-react";
+import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2, AlertOctagon, X } from "lucide-react";
+import ErrorLogs from "./ErrorLogs";
 
 interface ControlCenterProps {
   config: any;
@@ -18,6 +19,7 @@ export default function ControlCenter({
   isScanning,
   showToast
 }: ControlCenterProps) {
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
   const [simFields, setSimFields] = useState({
     firstName: "",
     lastName: "",
@@ -306,6 +308,13 @@ export default function ControlCenter({
             </div>
             <div className="flex gap-2">
               <button
+                onClick={() => setShowDiagnosticsModal(true)}
+                title="View Diagnostic Logs"
+                className="p-1 text-zinc-500 hover:text-white cursor-pointer transition"
+              >
+                <AlertOctagon size={14} />
+              </button>
+              <button
                 onClick={copyLogs}
                 title="Copy Terminal Logs"
                 className="p-1 text-zinc-500 hover:text-white cursor-pointer transition"
@@ -341,7 +350,7 @@ export default function ControlCenter({
                 }
                 return (
                   <div key={idx} className={colorClass}>
-                    {line}
+                     {line}
                   </div>
                 );
               })
@@ -352,6 +361,28 @@ export default function ControlCenter({
           </div>
         </div>
       </div>
+
+      {showDiagnosticsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-[scaleIn_0.2s_ease-out]">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-850 bg-zinc-900/20">
+              <span className="text-xs font-bold text-zinc-400">Diagnostic Logs</span>
+              <button
+                onClick={() => setShowDiagnosticsModal(false)}
+                title="Close diagnostics"
+                className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition cursor-pointer border border-zinc-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <ErrorLogs showToast={showToast} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

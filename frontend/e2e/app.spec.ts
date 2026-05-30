@@ -95,15 +95,24 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
   });
 
-  test("5. Navigate to System Diagnostics page and check basic elements", async ({ page }) => {
-    // Click on System Diagnostics tab in sidebar
-    await page.getByRole("button", { name: "System Diagnostics", exact: true }).click();
+  test("5. Navigate to System Diagnostics via Control Center modal and check basic elements", async ({ page }) => {
+    // Navigate to Control Center tab in the sidebar
+    await page.getByRole("button", { name: "Control Center", exact: true }).click();
 
-    // Verify title
-    await expect(page.locator("h1")).toContainText("System Diagnostics");
+    // Click on the View Diagnostic Logs button
+    await page.locator('button[title="View Diagnostic Logs"]').click();
 
-    // Check header section
+    // Verify title inside modal header
+    await expect(page.locator("text=Diagnostic Logs")).toBeVisible();
+
+    // Check header section of ErrorLogs inside modal
     await expect(page.locator("text=Runtime Logs & Exception Tracking")).toBeVisible();
+
+    // Close the diagnostics modal
+    await page.locator('button[title="Close diagnostics"]').click();
+
+    // Verify modal is closed
+    await expect(page.locator("text=Diagnostic Logs")).not.toBeVisible();
   });
 
   test("6. Resume Hub upload, crawl and tailor flow", async ({ page }) => {

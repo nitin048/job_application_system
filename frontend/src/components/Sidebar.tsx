@@ -61,7 +61,6 @@ export default function Sidebar({
     {
       title: "System",
       items: [
-        { id: "errors", label: "System Diagnostics", icon: AlertTriangle },
         { id: "about", label: "About", icon: Info },
       ]
     }

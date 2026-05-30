@@ -9,7 +9,6 @@ import ResumeHub from "./components/ResumeHub";
 import SearchFilters from "./components/SearchFilters";
 import LegalEeo from "./components/LegalEeo";
 import SecretsKeys from "./components/SecretsKeys";
-import ErrorLogs from "./components/ErrorLogs";
 import About from "./components/About";
 import ProfilePage from "./components/ProfilePage";
 import LoginPage from "./components/auth/LoginPage";
@@ -372,8 +371,6 @@ export default function App() {
         return { title: "EEO & Declarations", desc: "Manage EEO demographics and compliance preferences." };
       case "credentials":
         return { title: "Secrets & Keys", desc: "Secure passwords, API tokens, and GDrive settings." };
-      case "errors":
-        return { title: "System Diagnostics", desc: "Review backend Python exception stack traces and frontend JavaScript errors." };
       case "about":
         return { title: "About", desc: "Learn more about Aegis Flow system design and the author behind the system." };
       default:
@@ -550,9 +547,6 @@ export default function App() {
                     showToast={showToast}
                     loadConfig={loadConfig}
                   />
-                )}
-                {activeTab === "errors" && (
-                  <ErrorLogs showToast={showToast} />
                 )}
                 {activeTab === "about" && (
                   <About />
