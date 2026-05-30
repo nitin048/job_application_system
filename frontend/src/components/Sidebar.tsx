@@ -40,17 +40,30 @@ export default function Sidebar({
   user,
   onLogout
 }: SidebarProps) {
-  const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "control-center", label: "Control Center", icon: Sliders },
-    { id: "jobs", label: "Discovered Jobs", icon: Briefcase },
-    { id: "resume-hub", label: "Resume Hub", icon: FileText },
-    { id: "search", label: "1. Search Filters", icon: Search },
-    { id: "identity", label: "2. Profile Details", icon: User },
-    { id: "compliance", label: "3. Legal & EEO", icon: Scale },
-    { id: "credentials", label: "4. Secrets & Keys", icon: KeyRound },
-    { id: "errors", label: "Runtime Logs", icon: AlertTriangle },
-    { id: "about", label: "About", icon: Info },
+  const sections = [
+    {
+      title: "Core Apps",
+      items: [
+        { id: "dashboard", label: "Dashboard", icon: Home },
+        { id: "control-center", label: "Control Center", icon: Sliders },
+        { id: "jobs", label: "Discovered Jobs", icon: Briefcase },
+        { id: "resume-hub", label: "Resume Hub", icon: FileText },
+      ]
+    },
+    {
+      title: "Configuration",
+      items: [
+        { id: "search", label: "Search Scope", icon: Search },
+        { id: "compliance", label: "EEO & Declarations", icon: Scale },
+        { id: "credentials", label: "Secrets & Keys", icon: KeyRound },
+      ]
+    },
+    {
+      title: "System",
+      items: [
+        { id: "about", label: "About", icon: Info },
+      ]
+    }
   ];
 
   return (
@@ -100,29 +113,38 @@ export default function Sidebar({
         </div>
 
         {/* Nav Menu */}
-        <nav className="flex-1 flex flex-col gap-1.5 overflow-y-auto">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setMobileOpen(false);
-                }}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                  isActive
-                    ? "bg-indigo-600/10 text-indigo-400 border-l-2 border-indigo-500 font-medium shadow-[inset_10px_0_20px_-10px_rgba(99,102,241,0.15)]"
-                    : "text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200"
-                } ${collapsed ? "justify-center" : ""}`}
-                title={collapsed ? item.label : undefined}
-              >
-                <Icon size={18} className="flex-shrink-0" />
-                {!collapsed && <span className="text-xs truncate">{item.label}</span>}
-              </button>
-            );
-          })}
+        <nav className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+          {sections.map((section, sIdx) => (
+            <div key={sIdx} className="flex flex-col gap-1.5">
+              {!collapsed && (
+                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-650 px-4 mb-0.5 select-none">
+                  {section.title}
+                </span>
+              )}
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setMobileOpen(false);
+                    }}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? "bg-indigo-600/10 text-indigo-400 border-l-2 border-indigo-500 font-medium shadow-[inset_10px_0_20px_-10px_rgba(99,102,241,0.15)]"
+                        : "text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200"
+                    } ${collapsed ? "justify-center" : ""}`}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <Icon size={16} className="flex-shrink-0" />
+                    {!collapsed && <span className="text-xs truncate">{item.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* User Account / Profile Section */}

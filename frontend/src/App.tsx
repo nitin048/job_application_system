@@ -7,10 +7,8 @@ import ControlCenter from "./components/ControlCenter";
 import DiscoveredJobs from "./components/DiscoveredJobs";
 import ResumeHub from "./components/ResumeHub";
 import SearchFilters from "./components/SearchFilters";
-import ProfileDetails from "./components/ProfileDetails";
 import LegalEeo from "./components/LegalEeo";
 import SecretsKeys from "./components/SecretsKeys";
-import ErrorLogs from "./components/ErrorLogs";
 import About from "./components/About";
 import ProfilePage from "./components/ProfilePage";
 import LoginPage from "./components/auth/LoginPage";
@@ -47,23 +45,46 @@ export default function App() {
     }, 4500);
   };
 
+  // Helper to sync user profile account details to config personal_details
+  const syncUserToConfig = (configData: any, currentUser: any) => {
+    if (!currentUser || !configData) return configData;
+    const nameParts = currentUser.fullName.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    const updated = { ...configData };
+    if (!updated.searches) updated.searches = {};
+    if (!updated.searches.candidate_identity) updated.searches.candidate_identity = {};
+    if (!updated.searches.candidate_identity.personal_details) {
+      updated.searches.candidate_identity.personal_details = {};
+    }
+
+    const personal = updated.searches.candidate_identity.personal_details;
+    personal.first_name = firstName;
+    personal.last_name = lastName;
+    personal.email = currentUser.email;
+    personal.phone = currentUser.phone || "";
+
+    return updated;
+  };
+
   // Load Configurations
   const loadConfig = async () => {
     try {
       const savedConfig = sessionStorage.getItem("aegis_flow_config");
+      let data: any;
       if (savedConfig) {
-        const parsed = JSON.parse(savedConfig);
-        setConfig(parsed);
-        setLocalConfig(JSON.parse(JSON.stringify(parsed)));
-        return;
+        data = JSON.parse(savedConfig);
+      } else {
+        const res = await fetch("/api/config");
+        if (!res.ok) throw new Error("Could not retrieve setup variables.");
+        data = await res.json();
       }
 
-      const res = await fetch("/api/config");
-      if (!res.ok) throw new Error("Could not retrieve setup variables.");
-      const data = await res.json();
-      setConfig(data);
-      setLocalConfig(JSON.parse(JSON.stringify(data))); // Deep clone for local edits
-      sessionStorage.setItem("aegis_flow_config", JSON.stringify(data));
+      const syncedData = syncUserToConfig(data, user);
+      setConfig(syncedData);
+      setLocalConfig(JSON.parse(JSON.stringify(syncedData))); // Deep clone for local edits
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(syncedData));
     } catch (err: any) {
       console.error(err);
       showToast("Error loading configurations.", "error");
@@ -135,6 +156,27 @@ export default function App() {
       window.removeEventListener("unhandledrejection", handlePromiseRejection);
     };
   }, [isAuthenticated]);
+
+  // Sync config when user changes (e.g. edited name, phone, etc.)
+  useEffect(() => {
+    if (!user || !config) return;
+    const nameParts = user.fullName.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    const personal = config.searches?.candidate_identity?.personal_details || {};
+    if (
+      personal.first_name !== firstName ||
+      personal.last_name !== lastName ||
+      personal.email !== user.email ||
+      personal.phone !== user.phone
+    ) {
+      const synced = syncUserToConfig(config, user);
+      setConfig(synced);
+      setLocalConfig(JSON.parse(JSON.stringify(synced)));
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(synced));
+    }
+  }, [user]);
 
   // Polling loop for logs and scan status
   useEffect(() => {
@@ -306,7 +348,7 @@ export default function App() {
   };
 
   // Check if current tab is settings
-  const isSettingsTab = ["search", "identity", "compliance", "credentials"].includes(activeTab);
+  const isSettingsTab = ["search", "compliance", "credentials"].includes(activeTab);
 
   // Check if config has been modified
   const isConfigModified = JSON.stringify(config) !== JSON.stringify(localConfig);
@@ -324,15 +366,11 @@ export default function App() {
       case "resume-hub":
         return { title: "Resume Hub", desc: "Upload and tailor distinct resumes, review ATS audits, and email PDFs." };
       case "search":
-        return { title: "1. Search Scope & Targets", desc: "Define positions, experience filters, and company blacklists." };
-      case "identity":
-        return { title: "2. Personal Profile Details", desc: "Set contact info and demographics parsed by form automation." };
+        return { title: "Search Scope", desc: "Define positions, experience filters, and company blacklists." };
       case "compliance":
-        return { title: "3. Legal Waivers & EEO", desc: "Manage compliance questionnaire preferences." };
+        return { title: "EEO & Declarations", desc: "Manage EEO demographics and compliance preferences." };
       case "credentials":
-        return { title: "4. Secrets & Keys", desc: "Secure passwords, API tokens, and GDrive settings." };
-      case "errors":
-        return { title: "Runtime Logs", desc: "Review backend Python exception stack traces and frontend JavaScript errors." };
+        return { title: "Secrets & Keys", desc: "Secure passwords, API tokens, and GDrive settings." };
       case "about":
         return { title: "About", desc: "Learn more about Aegis Flow system design and the author behind the system." };
       default:
@@ -430,26 +468,18 @@ export default function App() {
               </div>
               <div className="w-10 h-px bg-zinc-800 mx-2" />
               <div
-                onClick={() => setActiveTab("identity")}
-                className={`flex items-center gap-2 cursor-pointer transition ${activeTab === "identity" ? "opacity-100" : "opacity-50 hover:opacity-85"}`}
-              >
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${activeTab === "identity" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>2</div>
-                <div className="text-[10px] font-bold text-zinc-300">Profile Info</div>
-              </div>
-              <div className="w-10 h-px bg-zinc-800 mx-2" />
-              <div
                 onClick={() => setActiveTab("compliance")}
                 className={`flex items-center gap-2 cursor-pointer transition ${activeTab === "compliance" ? "opacity-100" : "opacity-50 hover:opacity-85"}`}
               >
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${activeTab === "compliance" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>3</div>
-                <div className="text-[10px] font-bold text-zinc-300">EEO Declarations</div>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${activeTab === "compliance" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>2</div>
+                <div className="text-[10px] font-bold text-zinc-300">EEO & Declarations</div>
               </div>
               <div className="w-10 h-px bg-zinc-800 mx-2" />
               <div
                 onClick={() => setActiveTab("credentials")}
                 className={`flex items-center gap-2 cursor-pointer transition ${activeTab === "credentials" ? "opacity-100" : "opacity-50 hover:opacity-85"}`}
               >
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${activeTab === "credentials" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>4</div>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${activeTab === "credentials" ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-400"}`}>3</div>
                 <div className="text-[10px] font-bold text-zinc-300">Secrets & Keys</div>
               </div>
             </div>
@@ -504,12 +534,6 @@ export default function App() {
                     loadConfig={loadConfig}
                   />
                 )}
-                {activeTab === "identity" && (
-                  <ProfileDetails
-                    formData={localConfig}
-                    onChange={setLocalConfig}
-                  />
-                )}
                 {activeTab === "compliance" && (
                   <LegalEeo
                     formData={localConfig}
@@ -523,9 +547,6 @@ export default function App() {
                     showToast={showToast}
                     loadConfig={loadConfig}
                   />
-                )}
-                {activeTab === "errors" && (
-                  <ErrorLogs showToast={showToast} />
                 )}
                 {activeTab === "about" && (
                   <About />

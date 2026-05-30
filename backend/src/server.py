@@ -332,6 +332,53 @@ def get_jobs():
     global jobs_cache
     return {"jobs": jobs_cache}
 
+@app.post("/api/validate-gemini")
+def validate_gemini():
+    """
+    Validates connection and API key with Gemini.
+    """
+    import google.generativeai as genai
+    active_config = loader_session_var.get()
+    consts = active_config.get("constants", {}) if active_config else {}
+    gemini_key = consts.get("GEMINI_API_KEY", "")
+    
+    # fallback to env or standard constants if session var is not set
+    if not gemini_key:
+        from config.constants import GEMINI_API_KEY
+        gemini_key = GEMINI_API_KEY
+        
+    if not gemini_key:
+        raise HTTPException(status_code=400, detail="Gemini API Key is not configured in Secrets & Keys.")
+        
+    try:
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content("Ping. Respond with exactly the word 'PONG'.")
+        text = response.text.strip()
+        if "PONG" in text or text:
+            return {"status": "success", "message": f"Successfully connected to Gemini! Model response: {text}"}
+        else:
+            return {"status": "error", "message": "Gemini connection validated, but response was empty."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini API check failed: {str(e)}")
+
+@app.post("/api/jobs/purge")
+def purge_jobs():
+    """
+    Clears the discovered jobs database cache and deletes the file.
+    """
+    global jobs_cache
+    jobs_cache = []
+    
+    jobs_json_path = ROOT_DIR / "data" / "discovered_jobs.json"
+    if jobs_json_path.exists():
+        try:
+            jobs_json_path.unlink()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not delete cache file: {str(e)}")
+            
+    return {"status": "success", "message": "Discovered jobs database purged successfully."}
+
 def run_scan_in_background(session_config: dict | None):
     # Set context variables in background thread context
     token1 = consts_session_var.set(session_config)

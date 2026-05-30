@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2 } from "lucide-react";
+import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2, AlertOctagon, X, KeyRound, Loader2 } from "lucide-react";
+import ErrorLogs from "./ErrorLogs";
 
 interface ControlCenterProps {
   config: any;
@@ -18,12 +19,56 @@ export default function ControlCenter({
   isScanning,
   showToast
 }: ControlCenterProps) {
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
+  const [isValidatingGemini, setIsValidatingGemini] = useState(false);
+  const [isPurgingJobs, setIsPurgingJobs] = useState(false);
   const [simFields, setSimFields] = useState({
     firstName: "",
     lastName: "",
     email: "",
     relocate: ""
   });
+
+  const handleValidateGemini = async () => {
+    setIsValidatingGemini(true);
+    setLogs((prev) => prev + `[System] Testing Gemini LLM connectivity...\n`);
+    try {
+      const res = await fetch("/api/validate-gemini", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Validation request failed.");
+      }
+      showToast(data.message, "success");
+      setLogs((prev) => prev + `[Success] Gemini Check: ${data.message}\n`);
+    } catch (err: any) {
+      showToast(err.message, "error");
+      setLogs((prev) => prev + `[Error] Gemini Check: ${err.message}\n`);
+    } finally {
+      setIsValidatingGemini(false);
+    }
+  };
+
+  const handlePurgeJobs = async () => {
+    if (!confirm("Are you sure you want to clear all matching jobs from your local database cache? This action is irreversible.")) {
+      return;
+    }
+    setIsPurgingJobs(true);
+    setLogs((prev) => prev + `[System] Purging discovered jobs cache...\n`);
+    try {
+      const res = await fetch("/api/jobs/purge", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Purge request failed.");
+      }
+      showToast(data.message, "success");
+      setLogs((prev) => prev + `[Success] Database: ${data.message}\n`);
+    } catch (err: any) {
+      showToast(err.message, "error");
+      setLogs((prev) => prev + `[Error] Database: ${err.message}\n`);
+    } finally {
+      setIsPurgingJobs(false);
+    }
+  };
 
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
@@ -66,14 +111,35 @@ export default function ControlCenter({
   const positions = config?.searches?.search_parameters?.positions || [];
   const locations = config?.searches?.search_parameters?.locations || [];
   const geminiKey = config?.constants?.GEMINI_API_KEY || "";
-  const naukriUser = config?.constants?.USERNAME || "";
-  const naukriPass = config?.constants?.PASSWORD || "";
   const resumePath = config?.constants?.RESUME_PATH || "";
 
   // Onboarding checklist
   const isResumeConfigured = !!resumePath && resumePath.endsWith(".pdf");
-  const isNaukriConfigured = !!naukriUser && !!naukriPass && naukriUser !== "candidate_auth@domain.local";
   const isGeminiConfigured = !!geminiKey;
+
+  const portalsList = [
+    { id: "LINKEDIN", label: "LinkedIn" },
+    { id: "INSTAHYRE", label: "Instahyre" },
+    { id: "CUTSHORT", label: "Cutshort" },
+    { id: "WELLFOUND", label: "Wellfound" },
+    { id: "HIRIST", label: "Hirist" },
+    { id: "NAUKRI", label: "Naukri" },
+    { id: "INDEED", label: "Indeed" },
+    { id: "FOUNDIT", label: "Foundit" },
+    { id: "SHINE", label: "Shine" },
+    { id: "TIMESJOBS", label: "TimesJobs" },
+    { id: "GLASSDOOR", label: "Glassdoor" }
+  ];
+
+  const configuredPortals = portalsList.filter(portal => {
+    const isNaukri = portal.id === "NAUKRI";
+    const consts = config?.constants || {};
+    if (isNaukri) {
+      return !!consts.USERNAME && !!consts.PASSWORD && consts.USERNAME !== "candidate_auth@domain.local";
+    } else {
+      return !!consts[`${portal.id}_USERNAME`] && !!consts[`${portal.id}_PASSWORD`];
+    }
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -150,7 +216,7 @@ export default function ControlCenter({
             <button
               onClick={() => triggerAction("test-graph")}
               disabled={isScanning}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-800 hover:bg-zinc-700/85 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer border border-zinc-700 transition"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-850 hover:bg-zinc-700/85 disabled:opacity-50 text-white border border-zinc-800 rounded-xl text-xs font-semibold cursor-pointer transition"
             >
               <Play size={14} className="text-zinc-400" />
               Run Mock Graph Validation
@@ -162,6 +228,30 @@ export default function ControlCenter({
             >
               <Zap size={14} />
               Bump Naukri Visibility
+            </button>
+            <button
+              onClick={handleValidateGemini}
+              disabled={isScanning || isValidatingGemini}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer transition"
+            >
+              {isValidatingGemini ? (
+                <Loader2 size={14} className="animate-spin text-zinc-450" />
+              ) : (
+                <KeyRound size={14} className="text-indigo-400" />
+              )}
+              {isValidatingGemini ? "Testing Key..." : "Test Gemini LLM Key"}
+            </button>
+            <button
+              onClick={handlePurgeJobs}
+              disabled={isScanning || isPurgingJobs}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 disabled:opacity-50 text-rose-400 hover:text-rose-350 hover:bg-rose-500/5 rounded-xl text-xs font-semibold cursor-pointer transition"
+            >
+              {isPurgingJobs ? (
+                <Loader2 size={14} className="animate-spin text-rose-455" />
+              ) : (
+                <Trash2 size={14} className="text-rose-400" />
+              )}
+              {isPurgingJobs ? "Purging Cache..." : "Purge Jobs Database"}
             </button>
           </div>
 
@@ -180,14 +270,18 @@ export default function ControlCenter({
                   Resume PDF path configured
                 </span>
               </li>
-              <li className="flex items-center gap-2.5 text-xs text-zinc-400">
-                {isNaukriConfigured ? (
+              {configuredPortals.map(portal => (
+                <li key={portal.id} className="flex items-center gap-2.5 text-xs text-zinc-400">
                   <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                ) : (
+                  <span className="text-zinc-200">{portal.label} login setup</span>
+                </li>
+              ))}
+              {configuredPortals.length === 0 && (
+                <li className="flex items-center gap-2.5 text-xs text-zinc-450">
                   <XCircle size={14} className="text-zinc-650 flex-shrink-0" />
-                )}
-                <span className={isNaukriConfigured ? "text-zinc-200" : ""}>Naukri login setup</span>
-              </li>
+                  <span>No portals configured</span>
+                </li>
+              )}
               <li className="flex items-center gap-2.5 text-xs text-zinc-400">
                 {isGeminiConfigured ? (
                   <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
@@ -281,6 +375,13 @@ export default function ControlCenter({
             </div>
             <div className="flex gap-2">
               <button
+                onClick={() => setShowDiagnosticsModal(true)}
+                title="View Diagnostic Logs"
+                className="p-1 text-zinc-500 hover:text-white cursor-pointer transition"
+              >
+                <AlertOctagon size={14} />
+              </button>
+              <button
                 onClick={copyLogs}
                 title="Copy Terminal Logs"
                 className="p-1 text-zinc-500 hover:text-white cursor-pointer transition"
@@ -316,7 +417,7 @@ export default function ControlCenter({
                 }
                 return (
                   <div key={idx} className={colorClass}>
-                    {line}
+                     {line}
                   </div>
                 );
               })
@@ -327,6 +428,28 @@ export default function ControlCenter({
           </div>
         </div>
       </div>
+
+      {showDiagnosticsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-[scaleIn_0.2s_ease-out]">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-850 bg-zinc-900/20">
+              <span className="text-xs font-bold text-zinc-400">Diagnostic Logs</span>
+              <button
+                onClick={() => setShowDiagnosticsModal(false)}
+                title="Close diagnostics"
+                className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition cursor-pointer border border-zinc-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <ErrorLogs showToast={showToast} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
