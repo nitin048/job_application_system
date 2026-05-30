@@ -19,7 +19,19 @@ class SearchParameters(BaseModel):
     titleBlacklist: list[str] = Field(default_factory=list)
     candidate_experience_years: float | None = 0.0
     candidate_skills: list[str] = Field(default_factory=list)
-    target_portals: dict[str, bool] = Field(default_factory=lambda: {"naukri": True, "linkedin": True, "indeed": True})
+    target_portals: dict[str, bool] = Field(default_factory=lambda: {
+        "linkedin": True,
+        "instahyre": True,
+        "cutshort": True,
+        "wellfound": True,
+        "hirist": True,
+        "naukri": True,
+        "indeed": True,
+        "foundit": True,
+        "shine": True,
+        "timesjobs": True,
+        "glassdoor": True
+    })
 
 class PersonalDetails(BaseModel):
     first_name: str

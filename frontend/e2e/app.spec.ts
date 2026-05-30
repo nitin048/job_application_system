@@ -59,25 +59,24 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await expect(page.locator("h1")).toContainText("1. Search Scope & Targets");
 
     // Find the positions input field, fill in some new text to trigger modification
-    const positionsInput = page.locator('input[placeholder*="positions to scan"]');
-    if (await positionsInput.isVisible()) {
-      const originalValue = await positionsInput.inputValue();
-      await positionsInput.fill(originalValue ? `${originalValue}, QA Engineer` : "QA Engineer");
+    const positionsInput = page.locator("#positions-input");
+    await expect(positionsInput).toBeVisible();
+    const originalValue = await positionsInput.inputValue();
+    await positionsInput.fill(originalValue ? `${originalValue}, QA Engineer` : "QA Engineer");
 
-      // Verify the sticky Save/Discard configurations banner slides up and becomes visible
-      await expect(page.locator("text=You have unsaved changes in your configurations")).toBeVisible();
-      await expect(page.locator("button", { name: "Discard" })).toBeVisible();
-      await expect(page.locator("button", { name: "Save Settings" })).toBeVisible();
+    // Verify the sticky Save/Discard configurations banner slides up and becomes visible
+    await expect(page.locator("text=You have unsaved changes in your configurations")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Discard", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save Settings", exact: true })).toBeVisible();
 
-      // Discard changes
-      await page.locator("button", { name: "Discard" }).click();
-      await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
-    }
+    // Discard changes
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
   });
 
   test("5. Navigate to Runtime Logs page and check basic elements", async ({ page }) => {
     // Click on Runtime Logs tab in sidebar
-    await page.getByRole("button", { name: "Runtime Logs" }).click();
+    await page.getByRole("button", { name: "Runtime Logs", exact: true }).click();
 
     // Verify title
     await expect(page.locator("h1")).toContainText("Runtime Logs");
@@ -158,32 +157,72 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await page.getByRole("button", { name: "1. Search Filters" }).click();
     
     // Fill in a unique position target
-    const positionsInput = page.locator('input[placeholder*="positions to scan"]');
-    if (await positionsInput.isVisible()) {
-      await positionsInput.fill("E2E Test Session Engineer");
-      
-      // Save changes
-      await page.locator("button", { name: "Save Settings" }).click();
-      await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
-      
-      // Refresh page
-      await page.reload();
-      
-      // Check that the saved position target persists after refresh
-      await page.getByRole("button", { name: "1. Search Filters" }).click();
-      await expect(positionsInput).toHaveValue("E2E Test Session Engineer");
-      
-      // Open a completely new tab/context to verify session isolation
-      const newPage = await context.newPage();
-      await newPage.goto("/");
-      
-      // Navigate to Search Filters on the new page
-      await newPage.getByRole("button", { name: "1. Search Filters" }).click();
-      const newPositionsInput = newPage.locator('input[placeholder*="positions to scan"]');
-      
-      // The value should be empty / not have "E2E Test Session Engineer" (isolation check)
-      await expect(newPositionsInput).not.toHaveValue("E2E Test Session Engineer");
-      await newPage.close();
-    }
+    const positionsInput = page.locator("#positions-input");
+    await expect(positionsInput).toBeVisible();
+    await positionsInput.fill("E2E Test Session Engineer");
+    
+    // Save changes
+    await page.getByRole("button", { name: "Save Settings", exact: true }).click();
+    await expect(page.locator("text=You have unsaved changes in your configurations")).not.toBeVisible();
+    
+    // Refresh page
+    await page.reload();
+    
+    // Check that the saved position target persists after refresh
+    await page.getByRole("button", { name: "1. Search Filters" }).click();
+    await expect(positionsInput).toHaveValue("E2E Test Session Engineer");
+    
+    // Open a completely new tab/context to verify session isolation
+    const newPage = await context.newPage();
+    await newPage.goto("/");
+    
+    // Navigate to Search Filters on the new page
+    await newPage.getByRole("button", { name: "1. Search Filters" }).click();
+    const newPositionsInput = newPage.locator("#positions-input");
+    await expect(newPositionsInput).toBeVisible();
+    
+    // The value should be empty / not have "E2E Test Session Engineer" (isolation check)
+    await expect(newPositionsInput).not.toHaveValue("E2E Test Session Engineer");
+    await newPage.close();
+  });
+
+  test("10. Test Search Filters suggestions, spaces, and commas behavior", async ({ page }) => {
+    // Navigate to 1. Search Filters configuration tab
+    await page.getByRole("button", { name: "1. Search Filters" }).click();
+
+    const positionsInput = page.locator("#positions-input");
+    await expect(positionsInput).toBeVisible();
+
+    // Clear the input
+    await positionsInput.fill("");
+    await expect(positionsInput).toHaveValue("");
+
+    // Type a value and verify it stays
+    await positionsInput.pressSequentially("React Developer");
+    await expect(positionsInput).toHaveValue("React Developer");
+
+    // Type a comma and space, verify they stay
+    await positionsInput.pressSequentially(", ");
+    await expect(positionsInput).toHaveValue("React Developer, ");
+
+    // Type 'Dev' to trigger suggestion
+    await positionsInput.pressSequentially("Dev");
+    await expect(positionsInput).toHaveValue("React Developer, Dev");
+
+    // Suggestion box should be visible
+    const suggestionBox = page.locator("text=Popular Job Titles:");
+    await expect(suggestionBox).toBeVisible();
+
+    // Click on suggestion '+ DevOps Engineer'
+    const devOpsBtn = page.getByRole("button", { name: "+ DevOps Engineer", exact: true });
+    await expect(devOpsBtn).toBeVisible();
+    await devOpsBtn.click();
+
+    // The value should now have DevOps Engineer appended
+    await expect(positionsInput).toHaveValue("React Developer, DevOps Engineer");
+
+    // Discard the changes
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
   });
 });
+

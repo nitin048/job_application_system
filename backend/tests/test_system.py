@@ -73,7 +73,6 @@ class TestJobApplicationSystem(unittest.TestCase):
             "constants": {
                 "USERNAME": "nitinpradhan48@gmail.com",
                 "PASSWORD": "mock_password",
-                "MOBILE": "+917795275103",
                 "RESUME_PATH": str(Path(__file__).parent.parent / "data" / "test_resume.pdf"),
                 "MODIFIED_RESUME_PATH": str(Path(__file__).parent.parent / "data" / "test_modified_resume.pdf"),
                 "GEMINI_API_KEY": "mock_gemini_key",
@@ -375,6 +374,50 @@ class TestJobApplicationSystem(unittest.TestCase):
             self.assertIn("Company B", companies)
             self.assertIn("Company C", companies)
             self.assertIn("Company D", companies)
+
+    def test_scan_resume_for_filters_success(self):
+        from src.server import scan_resume_for_filters
+        import config.constants as consts
+        from unittest.mock import patch, MagicMock
+        from pathlib import Path
+        from fastapi import HTTPException
+        
+        # Save original config
+        original_session = consts.session_config_var.get()
+        pdf_path = Path(__file__).parent.parent / "data" / "test_resume.pdf"
+        
+        try:
+            # Test 1: When resume path does not exist, it should raise HTTPException 400
+            consts.session_config_var.get()["constants"]["RESUME_PATH"] = "nonexistent_resume.pdf"
+            with patch("pathlib.Path.exists", return_value=False):
+                with self.assertRaises(HTTPException) as ctx:
+                    scan_resume_for_filters()
+            self.assertEqual(ctx.exception.status_code, 400)
+            self.assertEqual(ctx.exception.detail, "Resume not found on system. Please upload to proceed.")
+
+            # Test 2: When resume path exists, it should scan successfully
+            # Generate the dummy PDF first
+            doc = DocumentGenerator("", str(pdf_path))
+            doc.compile_pdf("Nitin", "Pradhan", "nitinpradhan48@gmail.com", "+917795275103")
+            
+            consts.session_config_var.get()["constants"]["RESUME_PATH"] = str(pdf_path)
+            
+            # Mock PdfReader and pypdf extract text
+            mock_pdf_content = "Nitin Pradhan\nSenior Full Stack Developer\nReact, TypeScript, AWS, SQL Server"
+            
+            with patch("pypdf.PdfReader") as mock_reader:
+                mock_page = MagicMock()
+                mock_page.extract_text.return_value = mock_pdf_content
+                mock_reader.return_value.pages = [mock_page]
+                
+                result = scan_resume_for_filters()
+                self.assertIsNotNone(result)
+                self.assertIn("React", result["candidate_skills"])
+                self.assertIn("TypeScript", result["candidate_skills"])
+        finally:
+            if pdf_path.exists():
+                pdf_path.unlink()
+            consts.session_config_var.set(original_session)
 
 if __name__ == "__main__":
     unittest.main()

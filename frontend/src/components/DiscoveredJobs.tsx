@@ -53,12 +53,15 @@ export default function DiscoveredJobs({
     tailored: null as any
   });
 
+  const [portalFilter, setPortalFilter] = useState("");
+
   // Reset filters
   const resetFilters = () => {
     setKeyword("");
     setMinScore(0);
     setWorkplace("");
     setApplyType("");
+    setPortalFilter("");
     setCurrentPage(1);
   };
 
@@ -157,6 +160,7 @@ export default function DiscoveredJobs({
     if (minScore > 0 && (job.compatibility || 0) < minScore) return false;
     if (workplace && job.workplace_type !== workplace) return false;
     if (applyType && (job.apply_type || "Easy Apply") !== applyType) return false;
+    if (portalFilter && (job.portal || "naukri") !== portalFilter) return false;
     return true;
   });
 
@@ -277,6 +281,23 @@ export default function DiscoveredJobs({
             </select>
           </div>
 
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-zinc-400 font-semibold uppercase">Portal</label>
+            <select
+              value={portalFilter}
+              onChange={(e) => {
+                setPortalFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-zinc-950 border border-zinc-850 hover:border-zinc-800 text-xs px-3 py-2 rounded-lg outline-none text-zinc-350 cursor-pointer uppercase font-bold"
+            >
+              <option value="">All Portals</option>
+              {Array.from(new Set(jobs.map((j) => j.portal).filter(Boolean))).map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={resetFilters}
             className="px-3 py-2 text-xs font-semibold text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg cursor-pointer transition duration-200"
@@ -316,6 +337,10 @@ export default function DiscoveredJobs({
                   <div className="flex-1 flex flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold text-zinc-500 tracking-wider">
                       <span className="text-zinc-300 font-bold">{job.company}</span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950 text-zinc-400 border border-zinc-850/60 text-[9px] font-bold uppercase">
+                        🌐 {job.portal || "naukri"}
+                      </span>
                       <span>•</span>
                       <span>{job.location}</span>
                       <span>•</span>

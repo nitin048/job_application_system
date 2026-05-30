@@ -12,6 +12,14 @@ from src.discovery import JobListing, normalize_url
 from src.providers.naukri_provider import NaukriProvider
 from src.providers.linkedin_provider import LinkedInProvider
 from src.providers.indeed_provider import IndeedProvider
+from src.providers.instahyre_provider import InstahyreProvider
+from src.providers.cutshort_provider import CutshortProvider
+from src.providers.wellfound_provider import WellfoundProvider
+from src.providers.hirist_provider import HiristProvider
+from src.providers.foundit_provider import FounditProvider
+from src.providers.shine_provider import ShineProvider
+from src.providers.timesjobs_provider import TimesJobsProvider
+from src.providers.glassdoor_provider import GlassdoorProvider
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,6 +64,22 @@ class JobCrawler:
             providers.append(LinkedInProvider(self.config))
         if target_portals.get("indeed", True):
             providers.append(IndeedProvider(self.config))
+        if target_portals.get("instahyre", True):
+            providers.append(InstahyreProvider(self.config))
+        if target_portals.get("cutshort", True):
+            providers.append(CutshortProvider(self.config))
+        if target_portals.get("wellfound", True):
+            providers.append(WellfoundProvider(self.config))
+        if target_portals.get("hirist", True):
+            providers.append(HiristProvider(self.config))
+        if target_portals.get("foundit", True):
+            providers.append(FounditProvider(self.config))
+        if target_portals.get("shine", True):
+            providers.append(ShineProvider(self.config))
+        if target_portals.get("timesjobs", True):
+            providers.append(TimesJobsProvider(self.config))
+        if target_portals.get("glassdoor", True):
+            providers.append(GlassdoorProvider(self.config))
 
         scored_jobs = []
         import threading
@@ -158,7 +182,8 @@ class JobCrawler:
                 "compatibility": compatibility_percentage,
                 "workplace_type": role.workplace_type,
                 "skills": role.requirements,
-                "apply_type": "Easy Apply" if raw.get("is_easy_apply", True) else "Manual Intervention"
+                "apply_type": "Easy Apply" if raw.get("is_easy_apply", True) else "Manual Intervention",
+                "portal": raw.get("portal", "naukri")
             }
         return None
 
@@ -267,7 +292,8 @@ Raw job description:
                 "location": "London (Hybrid)",
                 "description": "Build high-performance web applications using Python, JavaScript, and React. Work with cloud infrastructure (AWS) and PostgreSQL databases.",
                 "url": "https://careers.google.com/jobs/results/job_google_1",
-                "is_easy_apply": False
+                "is_easy_apply": False,
+                "portal": "linkedin"
             },
             {
                 "id": "job_stripe_1",
@@ -276,7 +302,8 @@ Raw job description:
                 "location": "Remote (UK)",
                 "description": "Design secure payment APIs. Build microservices in Go, Python, and TypeScript. Experience with Docker, Kubernetes, and PostgreSQL is required.",
                 "url": "https://stripe.com/jobs/results/job_stripe_1",
-                "is_easy_apply": False
+                "is_easy_apply": False,
+                "portal": "indeed"
             },
             {
                 "id": "job_revolut_1",
@@ -285,7 +312,8 @@ Raw job description:
                 "location": "London (Remote)",
                 "description": "Scale financial ledger engines. Deploy python data pipelines and server layers. Experience with AWS, PostgreSQL, and typescript frontend views.",
                 "url": "https://revolut.com/jobs/results/job_revolut_1",
-                "is_easy_apply": True
+                "is_easy_apply": True,
+                "portal": "naukri"
             },
             {
                 "id": "job_meta_1",
@@ -294,6 +322,7 @@ Raw job description:
                 "location": "London (On-site)",
                 "description": "Optimize UI components for web platforms. Deep experience with React, JavaScript, HTML5, and CSS performance metrics.",
                 "url": "https://careers.fb.com/jobs/results/job_meta_1",
-                "is_easy_apply": False
+                "is_easy_apply": False,
+                "portal": "glassdoor"
             }
         ]

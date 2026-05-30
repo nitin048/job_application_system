@@ -133,7 +133,8 @@ class NaukriProvider(BasePortalProvider):
                                 "location": loc_text,
                                 "description": job_desc,
                                 "url": clean_url,
-                                "is_easy_apply": is_easy_apply
+                                "is_easy_apply": is_easy_apply,
+                                "portal": "naukri"
                             }
                             
                             if process_listing_cb:

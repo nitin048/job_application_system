@@ -7,7 +7,6 @@ RESUME_PATH = ""
 MODIFIED_RESUME_PATH = ""
 USERNAME = ""
 PASSWORD = ""
-MOBILE = ""
 UPDATE_PDF_HASH = True
 
 # LLM API Config
@@ -36,7 +35,6 @@ _DEFAULTS = {
     "MODIFIED_RESUME_PATH": "",
     "USERNAME": "",
     "PASSWORD": "",
-    "MOBILE": "",
     "UPDATE_PDF_HASH": True,
     "GEMINI_API_KEY": "",
     "SOLVER_API_KEY": "",
@@ -48,11 +46,39 @@ _DEFAULTS = {
     "SMTP_HOST": "",
     "SMTP_PORT": 587,
     "SMTP_USER": "",
-    "SMTP_PASSWORD": ""
+    "SMTP_PASSWORD": "",
+    
+    # Target portals authentication credentials (optional)
+    "LINKEDIN_USERNAME": "",
+    "LINKEDIN_PASSWORD": "",
+    "INSTAHYRE_USERNAME": "",
+    "INSTAHYRE_PASSWORD": "",
+    "CUTSHORT_USERNAME": "",
+    "CUTSHORT_PASSWORD": "",
+    "WELLFOUND_USERNAME": "",
+    "WELLFOUND_PASSWORD": "",
+    "HIRIST_USERNAME": "",
+    "HIRIST_PASSWORD": "",
+    "NAUKRI_USERNAME": "",
+    "NAUKRI_PASSWORD": "",
+    "INDEED_USERNAME": "",
+    "INDEED_PASSWORD": "",
+    "FOUNDIT_USERNAME": "",
+    "FOUNDIT_PASSWORD": "",
+    "SHINE_USERNAME": "",
+    "SHINE_PASSWORD": "",
+    "TIMESJOBS_USERNAME": "",
+    "TIMESJOBS_PASSWORD": "",
+    "GLASSDOOR_USERNAME": "",
+    "GLASSDOOR_PASSWORD": ""
 }
 
 # Sensitive keys to decrypt
-SENSITIVE_KEYS = {"PASSWORD", "GEMINI_API_KEY", "SOLVER_API_KEY", "SMTP_PASSWORD"}
+SENSITIVE_KEYS = {
+    "PASSWORD", "GEMINI_API_KEY", "SOLVER_API_KEY", "SMTP_PASSWORD",
+    "LINKEDIN_PASSWORD", "INSTAHYRE_PASSWORD", "CUTSHORT_PASSWORD", "WELLFOUND_PASSWORD", "HIRIST_PASSWORD",
+    "NAUKRI_PASSWORD", "INDEED_PASSWORD", "FOUNDIT_PASSWORD", "SHINE_PASSWORD", "TIMESJOBS_PASSWORD", "GLASSDOOR_PASSWORD"
+}
 
 def __getattr__(name):
     # 1. First, check if name is in ContextVar session config (which would have a nested 'constants' dict)
@@ -81,7 +107,7 @@ def __getattr__(name):
             pass
 
     # 3. Third, check environment variables directly
-    env_name = f"NAUKRI_{name}" if name in ("USERNAME", "PASSWORD", "MOBILE") else name
+    env_name = f"NAUKRI_{name}" if name in ("USERNAME", "PASSWORD") else name
     if env_name in os.environ:
         val = os.getenv(env_name)
         if name in SENSITIVE_KEYS and isinstance(val, str) and is_encrypted(val):
