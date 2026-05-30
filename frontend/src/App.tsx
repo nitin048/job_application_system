@@ -198,11 +198,16 @@ export default function App() {
           if (
             cleanLogs.includes("Execution finished") || 
             cleanLogs.includes("Job status updated in local database") || 
-            cleanLogs.includes("Apply pipeline failed")
+            cleanLogs.includes("Apply pipeline failed") ||
+            cleanLogs.includes("Apply pipeline failure written to local database")
           ) {
             setActiveTask(null);
             setApplyingJobId(null);
-            showToast("Pipeline action completed successfully!", "success");
+            if (cleanLogs.includes("failed") || cleanLogs.includes("failure") || cleanLogs.includes("Error")) {
+              showToast("Apply pipeline action failed. Please check status warnings.", "error");
+            } else {
+              showToast("Pipeline action completed successfully!", "success");
+            }
             loadJobs();
           }
         } catch (err) {

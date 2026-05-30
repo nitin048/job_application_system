@@ -445,18 +445,26 @@ export default function DiscoveredJobs({
                           Applied
                         </div>
                       ) : (
-                        <button
-                          onClick={() => handleApply(job.id, job.title)}
-                          disabled={applyingJobId === job.id}
-                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer transition"
-                        >
-                          {applyingJobId === job.id ? (
-                            <Loader2 size={13} className="animate-spin text-white" />
-                          ) : (
-                            <span>{isEasyApply ? "🚀" : "🛠️"}</span>
+                        <>
+                          <button
+                            onClick={() => handleApply(job.id, job.title)}
+                            disabled={applyingJobId === job.id}
+                            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer transition"
+                          >
+                            {applyingJobId === job.id ? (
+                              <Loader2 size={13} className="animate-spin text-white" />
+                            ) : (
+                              <span>{isEasyApply ? "🚀" : "🛠️"}</span>
+                            )}
+                            {isEasyApply ? "Auto Apply" : "Manual Apply"}
+                          </button>
+                          {job.apply_result && (job.apply_result.startsWith("Error:") || job.apply_result.startsWith("Failed:")) && (
+                            <div className="text-[10px] text-rose-400 mt-1.5 flex items-start gap-1.5 max-w-[170px] leading-normal font-medium bg-rose-500/5 border border-rose-500/15 p-2 rounded-lg">
+                              <AlertCircle size={12} className="mt-0.5 flex-shrink-0 text-rose-400" />
+                              <span className="text-rose-450 select-text">{job.apply_result}</span>
+                            </div>
                           )}
-                          {isEasyApply ? "Auto Apply" : "Manual Apply"}
-                        </button>
+                        </>
                       )}
                     </div>
                   </div>

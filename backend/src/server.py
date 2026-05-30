@@ -899,6 +899,8 @@ def _run_apply_inprocess(job_id: str):
             job["apply_result"] = result["message"]
             log(f"[✅ SUCCESS] {result['message']}")
         else:
+            job["applied"] = False
+            job["apply_result"] = f"Failed: {result['message']}"
             log(f"[⚠️ Partial] {result['message']}")
             if result.get("screenshot"):
                 log(f"[Info] Screenshot: {result['screenshot']}")
@@ -915,6 +917,40 @@ def _run_apply_inprocess(job_id: str):
         log(f"[Error] Apply pipeline failed: {e}")
         import traceback
         log(traceback.format_exc())
+        
+        try:
+            # Re-read to ensure we do not overwrite other fields concurrently modified
+            jobs_path = ROOT_DIR / "data" / "discovered_jobs.json"
+            if jobs_path.exists():
+                with open(jobs_path, "r", encoding="utf-8") as f:
+                    all_jobs = json.load(f)
+                job = next((j for j in all_jobs if j["id"] == job_id), None)
+                if job:
+                    err_msg = str(e)
+                    friendly_reason = "An unknown error occurred during the apply process."
+                    
+                    if "connect_over_cdp" in err_msg or "EHOSTUNREACH" in err_msg or "Connection refused" in err_msg:
+                        friendly_reason = "Failed to connect to browser. Make sure your local debugger port in Secrets & Keys is correct and Chrome is running."
+                    elif "API_KEY_INVALID" in err_msg or "API key not valid" in err_msg:
+                        friendly_reason = "Invalid Gemini API key. Please check your config in Secrets & Keys."
+                    elif "quota" in err_msg.lower() or "limit" in err_msg.lower() or "429" in err_msg:
+                        friendly_reason = "Gemini LLM API rate limit or quota exceeded. Please try again later."
+                    elif "PDF" in err_msg or "resume" in err_msg.lower():
+                        friendly_reason = "Failed to access resume PDF. Please check your uploaded resume file."
+                    elif "gdrive" in err_msg.lower() or "google drive" in err_msg.lower():
+                        friendly_reason = "Google Drive upload failed. Check your network or credentials."
+                    elif "Target closed" in err_msg or "Browser closed" in err_msg:
+                        friendly_reason = "Browser was closed unexpectedly. Keep the browser open during automation."
+                    
+                    job["applied"] = False
+                    job["apply_result"] = f"Error: {friendly_reason} ({err_msg})"
+                    
+                    with open(jobs_path, "w", encoding="utf-8") as f:
+                        json.dump(all_jobs, f, indent=2)
+                    jobs_cache = all_jobs
+                    log("[System] Apply pipeline failure written to local database.")
+        except Exception as db_err:
+            log(f"[Error] Failed to write apply error to database: {db_err}")
     finally:
         # Clean up temporary local file if we synced to Google Drive or downloaded from Drive
         if GDRIVE_SYNC_ENABLED and temp_downloaded and tailored_path and os.path.exists(tailored_path):
