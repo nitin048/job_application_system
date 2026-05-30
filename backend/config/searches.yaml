@@ -1,54 +1,38 @@
 search_parameters:
-  positions:
-  - Software Engineer
-  - Full Stack Developer
-  - Backend Engineer
-  locations:
-  - pune
+  positions: []
+  locations: []
   distance: null
   remote: true
-  candidate_experience_years: 7
-  candidate_skills:
-  - C#
-  - .NET Core
-  - React
-  - TypeScript
-  - AWS
-  - SQL Server
-  - Microservices
+  candidate_experience_years: 0
+  candidate_skills: []
   jobTypes:
-    full_time: true
+    full_time: false
     contract: false
   experienceLevel:
-    mid_level: true
+    mid_level: false
     senior: false
   date_range:
-    past_24_hours: true
+    past_24_hours: false
   apply_once_at_company: true
-  companyBlacklist:
-  - Unwanted Corporation X
-  - Staffing Agency Inc
-  titleBlacklist:
-  - Sales
-  - Recruiter
-  - Account Executive
+  companyBlacklist: []
+  titleBlacklist: []
 candidate_identity:
   personal_details:
-    first_name: Nitin
-    last_name: Pradhan
-    email: nitinpradhan48@gmail.com
-    phone: '+917795275103'
+    first_name: ""
+    last_name: ""
+    email: ""
+    phone: ""
   demographics:
-    gender: Male
-    pronouns: He/Him
-    veteran_status: 'No'
-    disability_status: 'No'
-    ethnicity: Declined to State
+    gender: ""
+    pronouns: ""
+    veteran_status: ""
+    disability_status: ""
+    ethnicity: ""
 compliance_preferences:
-  remote_work: 'Yes'
-  in_person_work: 'No'
-  open_to_relocation: 'Yes'
-  relocation_destinations: London, UK, India
-  willing_to_complete_assessments: 'Yes'
-  willing_to_undergo_drug_tests: 'No'
-  willing_to_undergo_background_checks: 'Yes'
+  remote_work: ""
+  in_person_work: ""
+  open_to_relocation: ""
+  relocation_destinations: ""
+  willing_to_complete_assessments: ""
+  willing_to_undergo_drug_tests: ""
+  willing_to_undergo_background_checks: ""

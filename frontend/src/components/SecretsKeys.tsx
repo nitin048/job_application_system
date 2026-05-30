@@ -116,7 +116,18 @@ export default function SecretsKeys({
         body: data
       });
       if (!res.ok) throw new Error("Upload failed.");
+      const resData = await res.json();
       showToast("Resume uploaded successfully!", "success");
+      
+      const updatedConfig = {
+        ...formData,
+        constants: {
+          ...consts,
+          RESUME_PATH: resData.path
+        }
+      };
+      onChange(updatedConfig);
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(updatedConfig));
       await loadConfig();
     } catch (err: any) {
       console.error(err);
@@ -139,6 +150,16 @@ export default function SecretsKeys({
       });
       if (!res.ok) throw new Error("Deletion failed.");
       showToast("Resume deleted from local server storage.", "success");
+      
+      const updatedConfig = {
+        ...formData,
+        constants: {
+          ...consts,
+          RESUME_PATH: ""
+        }
+      };
+      onChange(updatedConfig);
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(updatedConfig));
       await loadConfig();
     } catch (err: any) {
       console.error(err);
@@ -161,7 +182,18 @@ export default function SecretsKeys({
         body: data
       });
       if (!res.ok) throw new Error("Upload failed.");
+      const resData = await res.json();
       showToast("GDrive credentials.json uploaded successfully!", "success");
+      
+      const updatedConfig = {
+        ...formData,
+        constants: {
+          ...consts,
+          GDRIVE_CLIENT_SECRETS_PATH: resData.path
+        }
+      };
+      onChange(updatedConfig);
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(updatedConfig));
       await loadConfig();
     } catch (err: any) {
       console.error(err);
@@ -178,6 +210,16 @@ export default function SecretsKeys({
       const res = await fetch("/api/gdrive-credentials", { method: "DELETE" });
       if (!res.ok) throw new Error("Deletion failed.");
       showToast("Google Drive secrets file deleted.", "success");
+      
+      const updatedConfig = {
+        ...formData,
+        constants: {
+          ...consts,
+          GDRIVE_CLIENT_SECRETS_PATH: ""
+        }
+      };
+      onChange(updatedConfig);
+      sessionStorage.setItem("aegis_flow_config", JSON.stringify(updatedConfig));
       await loadConfig();
     } catch (err: any) {
       console.error(err);
