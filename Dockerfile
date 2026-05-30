@@ -16,13 +16,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
-WORKDIR /app
+WORKDIR /app/backend
 
-# Copy the entire application
-COPY . .
+# Copy the backend application files
+COPY backend/ ./
 
 # Overwrite static folder with the compiled assets from Stage 1
-COPY --from=frontend-builder /app/static ./static
+COPY --from=frontend-builder /app/backend/static ./static
 
 # Install pip and package dependencies
 RUN pip install --no-cache-dir --upgrade pip && \

@@ -85,7 +85,7 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await page.getByRole("button", { name: "Resume Hub" }).click();
 
     // Upload a test resume
-    await page.setInputFiles('input[type="file"]', "../assets/resume_hub/original/Resume (3).pdf");
+    await page.setInputFiles('input[type="file"]', "../backend/assets/resume_hub/original/Resume (3).pdf");
 
     // Expect successful upload toast
     await expect(page.locator("text=Resume successfully uploaded to hub workspace!")).toBeVisible({ timeout: 15000 });
@@ -110,7 +110,7 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await page.getByRole("button", { name: "Resume Hub" }).click();
 
     // Upload a test resume
-    await page.setInputFiles('input[type="file"]', "../assets/resume_hub/original/Resume (3).pdf");
+    await page.setInputFiles('input[type="file"]', "../backend/assets/resume_hub/original/Resume (3).pdf");
 
     // Expect successful upload toast
     await expect(page.locator("text=Resume successfully uploaded to hub workspace!")).toBeVisible({ timeout: 15000 });
