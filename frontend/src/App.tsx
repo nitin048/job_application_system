@@ -15,6 +15,7 @@ import LoginPage from "./components/auth/LoginPage";
 import SignUpPage from "./components/auth/SignUpPage";
 import ForgotPassword from "./components/auth/ForgotPassword";
 import { useAuth } from "./contexts/AuthContext";
+import ScanConfirmModal from "./components/ScanConfirmModal";
 
 export default function App() {
   const { isAuthenticated, isLoading, user, authView, logout } = useAuth();
@@ -33,6 +34,8 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const [applyingJobId, setApplyingJobId] = useState<string | null>(null);
+  const [showScanConfirmModal, setShowScanConfirmModal] = useState(false);
+  const [pendingItems, setPendingItems] = useState<any[]>([]);
 
   // Toasts Notification System
   const [toasts, setToasts] = useState<any[]>([]);
@@ -255,42 +258,8 @@ export default function App() {
     }
   };
 
-  // Job Scanning Action
-  const triggerJobScan = async () => {
-    const sessionConfigStr = sessionStorage.getItem("aegis_flow_config");
-    let activeConfig = localConfig || config;
-    if (sessionConfigStr) {
-      try {
-        activeConfig = JSON.parse(sessionConfigStr);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    const targetPortals = activeConfig?.searches?.search_parameters?.target_portals || {};
-    const portalIds = ["linkedin", "instahyre", "cutshort", "wellfound", "hirist", "naukri", "indeed", "foundit", "shine", "timesjobs", "glassdoor"];
-    const activePortals = portalIds.filter(id => targetPortals[id] !== false);
-
-    if (activePortals.length === 0) {
-      showToast("Please configure/enable at least one job portal in 'Search Filters' to scan.", "error");
-      return;
-    }
-
-    const consts = activeConfig?.constants || {};
-    const hasNaukriCreds = !!(consts.USERNAME && consts.PASSWORD);
-    const otherPortals = [
-      "LINKEDIN", "INSTAHYRE", "CUTSHORT", "WELLFOUND", "HIRIST", 
-      "INDEED", "FOUNDIT", "SHINE", "TIMESJOBS", "GLASSDOOR"
-    ];
-    const hasAnyOtherCreds = otherPortals.some(portal => {
-      return !!(consts[`${portal}_USERNAME`] && consts[`${portal}_PASSWORD`]);
-    });
-
-    if (!hasNaukriCreds && !hasAnyOtherCreds) {
-      showToast("Please configure credentials (username & password) for at least one portal in 'Secrets & Keys' to scan.", "error");
-      return;
-    }
-
+  // Helper to start the scan
+  const startJobScan = async (activeConfig: any) => {
     setIsScanning(true);
     setJobs([]);
     showToast("Starting background job scan...", "success");
@@ -314,6 +283,120 @@ export default function App() {
       console.error(err);
       showToast("Failed to start job search backend.", "error");
       setIsScanning(false);
+    }
+  };
+
+  // Job Scanning Action
+  const triggerJobScan = async () => {
+    const sessionConfigStr = sessionStorage.getItem("aegis_flow_config");
+    let activeConfig = localConfig || config;
+    if (sessionConfigStr) {
+      try {
+        activeConfig = JSON.parse(sessionConfigStr);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const targetPortals = activeConfig?.searches?.search_parameters?.target_portals || {};
+    const portalIds = ["linkedin", "instahyre", "cutshort", "wellfound", "hirist", "naukri", "indeed", "foundit", "shine", "timesjobs", "glassdoor"];
+    const activePortals = portalIds.filter(id => targetPortals[id] !== false);
+
+    if (activePortals.length === 0) {
+      showToast("Minimum Criteria Failed: Please enable at least one job portal in 'Search Filters' to scan.", "error");
+      return;
+    }
+
+    const positions = activeConfig?.searches?.search_parameters?.positions || [];
+    const locations = activeConfig?.searches?.search_parameters?.locations || [];
+
+    if (positions.length === 0) {
+      showToast("Minimum Criteria Failed: Please configure at least one job position in 'Search Scope' to scan.", "error");
+      return;
+    }
+
+    if (locations.length === 0) {
+      showToast("Minimum Criteria Failed: Please configure at least one geographic location in 'Search Scope' to scan.", "error");
+      return;
+    }
+
+    const consts = activeConfig?.constants || {};
+    const hasNaukriCreds = !!(consts.USERNAME && consts.PASSWORD && consts.USERNAME !== "candidate_auth@domain.local");
+    const otherPortals = [
+      "LINKEDIN", "INSTAHYRE", "CUTSHORT", "WELLFOUND", "HIRIST", 
+      "INDEED", "FOUNDIT", "SHINE", "TIMESJOBS", "GLASSDOOR"
+    ];
+    const hasAnyOtherCreds = otherPortals.some(portal => {
+      return !!(consts[`${portal}_USERNAME`] && consts[`${portal}_PASSWORD`]);
+    });
+
+    const portalsRequiringCreds = ["instahyre", "cutshort", "wellfound", "hirist", "foundit", "shine", "timesjobs", "glassdoor"];
+    const enabledRequiringCreds = activePortals.filter(id => portalsRequiringCreds.includes(id));
+    const enabledPublicOrHasCreds = activePortals.filter(id => {
+      if (id === "linkedin" || id === "indeed" || id === "naukri") return true;
+      const upper = id.toUpperCase();
+      return !!(consts[`${upper}_USERNAME`] && consts[`${upper}_PASSWORD`]);
+    });
+
+    if (enabledPublicOrHasCreds.length === 0) {
+      showToast("Minimum Criteria Failed: Missing credentials for credential-locked portals. Please enable a public portal (LinkedIn, Indeed, Naukri) or add credentials under 'Secrets & Keys'.", "error");
+      return;
+    }
+
+    // Now detect optional pending items
+    const detectedPending: any[] = [];
+
+    // 1. Missing credentials for enabled portals
+    const portalsWithMissingCreds = activePortals.filter(id => {
+      if (id === "naukri") {
+        return !hasNaukriCreds;
+      }
+      const upper = id.toUpperCase();
+      return !consts[`${upper}_USERNAME`] || !consts[`${upper}_PASSWORD`];
+    });
+
+    if (portalsWithMissingCreds.length > 0) {
+      const names = portalsWithMissingCreds.map(id => id.charAt(0).toUpperCase() + id.slice(1)).join(", ");
+      detectedPending.push({
+        type: "credentials",
+        label: "Missing credentials for enabled portals",
+        description: `Credentials are missing for: ${names}. These portals will default to fallback listings.`
+      });
+    }
+
+    // 2. Resume PDF missing
+    if (!consts.RESUME_PATH || !consts.RESUME_PATH.toLowerCase().endsWith(".pdf")) {
+      detectedPending.push({
+        type: "resume",
+        label: "Original resume PDF path not configured",
+        description: "You have not set a valid local path to a PDF resume. Scanning will run, but you won't be able to run automated applies or LLM tailoring."
+      });
+    }
+
+    // 3. Gemini Key missing
+    if (!consts.GEMINI_API_KEY) {
+      detectedPending.push({
+        type: "gemini",
+        label: "Gemini API key missing",
+        description: "No Gemini LLM API key has been configured. Descriptions will be summarized using local fallback parser rules instead of high-fidelity AI models."
+      });
+    }
+
+    // 4. GDrive sync disabled
+    if (consts.GDRIVE_SYNC_ENABLED !== true) {
+      detectedPending.push({
+        type: "gdrive",
+        label: "Google Drive Sync is inactive",
+        description: "Google Drive synchronization is disabled. Tailored resumes won't be automatically backed up to cloud vault storage folders."
+      });
+    }
+
+    if (detectedPending.length > 0) {
+      setPendingItems(detectedPending);
+      setShowScanConfirmModal(true);
+    } else {
+      // All optional settings are perfectly configured, start scan immediately!
+      startJobScan(activeConfig);
     }
   };
 
@@ -594,6 +677,26 @@ export default function App() {
               </div>
             </div>
           )}
+          <ScanConfirmModal
+            isOpen={showScanConfirmModal}
+            onClose={() => setShowScanConfirmModal(false)}
+            onConfirm={() => {
+              const sessionConfigStr = sessionStorage.getItem("aegis_flow_config");
+              let activeConfig = localConfig || config;
+              if (sessionConfigStr) {
+                try {
+                  activeConfig = JSON.parse(sessionConfigStr);
+                } catch (e) {}
+              }
+              startJobScan(activeConfig);
+              setShowScanConfirmModal(false);
+            }}
+            onNavigateToSettings={() => {
+              setShowScanConfirmModal(false);
+              setActiveTab("credentials");
+            }}
+            pendingItems={pendingItems}
+          />
         </div>
       </div>
     </ErrorBoundary>
