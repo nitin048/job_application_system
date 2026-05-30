@@ -7,6 +7,7 @@ This directory contains the Python core services for the Autonomous AI Job Appli
 ## 📖 Table of Contents
 * 📘 **[Complete User Manual](../doc/usermanual.md)**
 * 🗄️ **[Database Schema & ER Diagram](../doc/database.md)**
+* 🌐 **[Production MongoDB Setup Guide](../doc/production_mongodb_setup.md)**
 * 🚀 **[Render Deployment Guide](../doc/deployment.md)**
 1. [Core Features](#-core-features)
 2. [Subsystem Architecture & Components](#-subsystem-architecture--components)
