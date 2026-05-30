@@ -6,6 +6,7 @@ This directory contains the Python core services for the Autonomous AI Job Appli
 
 ## 📖 Table of Contents
 * 📘 **[Complete User Manual](../doc/usermanual.md)**
+* 🗄️ **[Database Schema & ER Diagram](../doc/database.md)**
 * 🚀 **[Render Deployment Guide](../doc/deployment.md)**
 1. [Core Features](#-core-features)
 2. [Subsystem Architecture & Components](#-subsystem-architecture--components)
@@ -69,7 +70,7 @@ graph TD
     H -->|DOCX/PDF Extract| I[Text Parser]
     I -->|Tailor Request| J[AI Resume Customizer]
     J -->|Query Prompt| K[Gemini API / Heuristic Fallback]
-    K -->|Compile PDF (Temp)| L[ReportLab Compiler]
+    K -->|"Compile PDF (Temp)"| L[ReportLab Compiler]
     L -->|Base64 & Save PDF| DB
     
     %% Submission Flow
@@ -235,18 +236,77 @@ cd job_application_system
 The application persists all configs, sessions, resumes, and cookies in MongoDB.
 
 #### Option A: Running MongoDB Locally
-1. Install MongoDB via Homebrew (macOS) or your system package manager:
+
+Select the instructions corresponding to your operating system:
+
+##### 🍎 macOS (via Homebrew)
+1. Install MongoDB Community Edition:
    ```bash
-   # macOS
    brew tap mongodb/brew
-   brew install mongodb-community
+   brew install mongodb-community@7.0
    ```
-2. Start the local MongoDB service:
+2. Start the local MongoDB background service:
    ```bash
-   # macOS
-   brew services start mongodb-community
+   brew services start mongodb-community@7.0
    ```
-3. MongoDB will run on `mongodb://localhost:27017/aegis_flow`.
+
+##### 🪟 Windows
+1. **Interactive Installer**:
+   * Download the MongoDB Community Server MSI installer from the official [MongoDB Download Center](https://www.mongodb.com/try/download/community).
+   * Run the `.msi` file and choose the **Complete** setup option.
+   * Make sure **"Install MongoDB as a Service"** is checked. This configures MongoDB to run automatically in the background as a Windows Service.
+   * Complete the wizard (you can optionally check "Install MongoDB Compass" to get a GUI database viewer).
+2. **Command Line (via winget)**:
+   * Run the following command in an Administrator command prompt:
+     ```cmd
+     winget install MongoDB.Community.Server
+     ```
+   * To start the service manually if it isn't running:
+     ```cmd
+     net start MongoDB
+     ```
+
+##### 🐧 Linux (Ubuntu/Debian)
+1. Import the MongoDB public GPG key:
+   ```bash
+   curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+   ```
+2. Create the list file for MongoDB (Ubuntu 22.04 LTS):
+   ```bash
+   echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+   ```
+3. Reload local package database and install MongoDB Community Server packages:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y mongodb-org
+   ```
+4. Start the MongoDB daemon and enable it to start on boot:
+   ```bash
+   sudo systemctl start mongod
+   sudo systemctl enable mongod
+   ```
+
+##### 🐧 Linux (RHEL / CentOS / Rocky Linux / AlmaLinux)
+1. Create a repository file `/etc/yum.repos.d/mongodb-org-7.0.repo`:
+   ```ini
+   [mongodb-org-7.0]
+   name=MongoDB Repository
+   baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+   gpgcheck=1
+   enabled=1
+   gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+   ```
+2. Install MongoDB packages:
+   ```bash
+   sudo yum install -y mongodb-org
+   ```
+3. Start the daemon and enable it to start on boot:
+   ```bash
+   sudo systemctl start mongod
+   sudo systemctl enable mongod
+   ```
+
+After installation, MongoDB will run on the default URI: `mongodb://localhost:27017/aegis_flow`.
 
 #### Option B: Using Remote MongoDB Atlas (Cloud)
 1. Register a free tier account on [MongoDB Atlas](https://www.mongodb.com/).
