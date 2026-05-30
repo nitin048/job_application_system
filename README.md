@@ -51,6 +51,8 @@ An autonomous, end-to-end job board search, ingestion, compatibility scoring, an
 
 The application is structured as a decoupled architecture containing a modern React SPA client communicating over a JSON REST API with a FastAPI Python backend, coupled with a CLI interface for automation.
 
+![Decoupled System Architecture Diagram](/Users/nitinpradhan/.gemini/antigravity-ide/brain/958a82f2-4a4b-421a-b364-99c55e505118/system_structure_diagram_1780133276821.png)
+
 ### System Workflow Diagram
 ```mermaid
 graph TD
