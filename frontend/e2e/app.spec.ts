@@ -6,10 +6,17 @@ test.describe("Autonomous AI Job Application System E2E Flow", () => {
     await page.goto("/");
   });
 
-  test("1. Land on Control Center (Dashboard) and verify layout & logs", async ({ page }) => {
-    // Check that we see the page title / header
+  test("1. Land on Dashboard and verify layout, then navigate to Control Center", async ({ page }) => {
+    // Check that we see the page title / header for Dashboard
+    await expect(page.locator("h1")).toContainText("Dashboard");
+    await expect(page.locator("text=Aegis Flow: Accelerate Your Career Search")).toBeVisible();
+
+    // Navigate to Control Center tab in the sidebar
+    await page.getByRole("button", { name: "Control Center", exact: true }).click();
+
+    // Verify title changes to Control Center
     await expect(page.locator("h1")).toContainText("Control Center");
-    
+
     // Check that the terminal console is visible
     await expect(page.locator("text=Output Terminal")).toBeVisible();
     await expect(page.locator('button[title="Clear logs"]')).toBeVisible();

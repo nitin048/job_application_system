@@ -1,6 +1,7 @@
 import React from "react";
 import {
-  LayoutDashboard,
+  Home,
+  Sliders,
   Briefcase,
   FileText,
   Search,
@@ -35,7 +36,8 @@ export default function Sidebar({
   isScanning
 }: SidebarProps) {
   const menuItems = [
-    { id: "dashboard", label: "Control Center", icon: LayoutDashboard },
+    { id: "dashboard", label: "Dashboard", icon: Home },
+    { id: "control-center", label: "Control Center", icon: Sliders },
     { id: "jobs", label: "Discovered Jobs", icon: Briefcase },
     { id: "resume-hub", label: "Resume Hub", icon: FileText },
     { id: "search", label: "1. Search Filters", icon: Search },

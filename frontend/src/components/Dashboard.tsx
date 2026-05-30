@@ -1,67 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Play, Zap, CheckCircle, XCircle, Terminal, Copy, Trash2 } from "lucide-react";
+import React, { useState } from "react";
+import { Briefcase, FileText, Settings, Terminal, Shield, CheckCircle, ArrowRight, Activity, Zap, HardDrive } from "lucide-react";
 
 interface DashboardProps {
+  jobs: any[];
   config: any;
-  logs: string;
-  setLogs: (logs: string) => void;
-  triggerAction: (actionName: string) => Promise<void>;
+  setActiveTab: (tab: string) => void;
   isScanning: boolean;
-  showToast: (msg: string, type: "success" | "error" | "warning") => void;
 }
 
 export default function Dashboard({
+  jobs,
   config,
-  logs,
-  setLogs,
-  triggerAction,
-  isScanning,
-  showToast
+  setActiveTab,
+  isScanning
 }: DashboardProps) {
-  const [simFields, setSimFields] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    relocate: ""
-  });
-
-  const terminalEndRef = useRef<HTMLDivElement>(null);
-
-  // Parse logs to animate sandbox
-  useEffect(() => {
-    if (!logs) {
-      setSimFields({ firstName: "", lastName: "", email: "", relocate: "" });
-      return;
-    }
-
-    const fnMatch = logs.match(/Field \[first_name_input\]: '([^']+)'/) || logs.match(/Field \[first_name\]: '([^']+)'/) || logs.match(/Filling text '([^']+)' for field: 'First Name'/i);
-    const lnMatch = logs.match(/Field \[last_name\]: '([^']+)'/) || logs.match(/Filling text '([^']+)' for field: 'Last Name'/i);
-    const emMatch = logs.match(/Field \[email_input\]: '([^']+)'/) || logs.match(/Field \[email\]: '([^']+)'/) || logs.match(/Filling text '([^']+)' for field: 'Email'/i) || logs.match(/Filling text '([^']+)' for field: 'Email Address'/i);
-    const relMatch = logs.match(/Field \[relocate\]: '([^']+)'/) || logs.match(/Selecting option '([^']+)' for field: 'Willing to relocate\?'/i) || logs.match(/Selecting option '([^']+)' for field: 'relocat'/i);
-
-    setSimFields({
-      firstName: fnMatch ? fnMatch[1] : "",
-      lastName: lnMatch ? lnMatch[1] : "",
-      email: emMatch ? emMatch[1] : "",
-      relocate: relMatch ? relMatch[1] : ""
-    });
-  }, [logs]);
-
-  // Scroll to bottom of terminal
-  useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
-
-  const copyLogs = () => {
-    navigator.clipboard.writeText(logs);
-    showToast("Logs copied to clipboard!", "success");
-  };
-
-  const clearLogs = () => {
-    setLogs("");
-    showToast("Terminal screen cleared.", "success");
-  };
-
   // Safe checks for metrics
   const positions = config?.searches?.search_parameters?.positions || [];
   const locations = config?.searches?.search_parameters?.locations || [];
@@ -69,264 +21,334 @@ export default function Dashboard({
   const naukriUser = config?.constants?.USERNAME || "";
   const naukriPass = config?.constants?.PASSWORD || "";
   const resumePath = config?.constants?.RESUME_PATH || "";
+  const gdriveSync = config?.constants?.GDRIVE_SYNC_ENABLED || false;
 
-  // Onboarding checklist
+  // Onboarding status calculations
   const isResumeConfigured = !!resumePath && resumePath.endsWith(".pdf");
   const isNaukriConfigured = !!naukriUser && !!naukriPass && naukriUser !== "candidate_auth@domain.local";
   const isGeminiConfigured = !!geminiKey;
+  const isGDriveConfigured = !!gdriveSync;
+
+  const checklistItems = [
+    { label: "Search scope configured", complete: positions.length > 0 && locations.length > 0 },
+    { label: "Original resume PDF uploaded", complete: isResumeConfigured },
+    { label: "Naukri credentials setup", complete: isNaukriConfigured },
+    { label: "Google Gemini API key bound", complete: isGeminiConfigured },
+    { label: "Google Drive sync active", complete: isGDriveConfigured }
+  ];
+
+  const completedCount = checklistItems.filter(item => item.complete).length;
+  const progressPercent = Math.round((completedCount / checklistItems.length) * 100);
+
+  // Statistics calculation
+  const totalScanned = jobs.length;
+  const appliedJobs = jobs.filter(j => j.applied).length;
+  const tailoredJobs = jobs.filter(j => j.tailored_file_path || j.gdrive_file_id || j.applied).length;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1 */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-2xl text-indigo-400">
-            🎯
+    <div className="flex flex-col gap-8 pb-10">
+      
+      {/* 3D Tech Showcase & Hero Section */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-zinc-900/50 via-zinc-950/80 to-indigo-950/15 border border-zinc-800/60 rounded-3xl p-6 lg:p-10 flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl">
+        <div className="flex-1 flex flex-col gap-4 max-w-lg z-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider w-fit">
+            <Activity size={10} className="animate-pulse" /> Autonomous AI Job Assistant
           </div>
-          <div>
-            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Job Targets</span>
-            <h3 className="text-base font-bold text-zinc-100 mt-0.5">
-              {positions.length} Target{positions.length === 1 ? "" : "s"}
-            </h3>
-          </div>
-        </div>
-
-        {/* Card 2 */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-2xl text-indigo-400">
-            📍
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Geographic Scopes</span>
-            <h3 className="text-base font-bold text-zinc-100 mt-0.5">
-              {locations.length} Location{locations.length === 1 ? "" : "s"}
-            </h3>
-          </div>
-        </div>
-
-        {/* Card 3 */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-2xl text-indigo-400">
-            🛡️
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Stealth Protection</span>
-            <h3 className="text-base font-bold text-zinc-100 mt-0.5">Hardened (CDP)</h3>
+          <h2 className="text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight font-display">
+            Aegis Flow: Accelerate Your Career Search
+          </h2>
+          <p className="text-zinc-400 text-xs leading-relaxed">
+            An autonomous multi-threaded agent suite designed to scan global job portals, contextually tailor resumes utilizing LLM inference, bypass security CAPTCHAs, and automate application form fills cleanly.
+          </p>
+          <div className="flex items-center gap-3 mt-2">
+            <button
+              onClick={() => setActiveTab("control-center")}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white rounded-xl cursor-pointer shadow-[0_0_15px_rgba(99,102,241,0.3)] transition select-none group"
+            >
+              Launch Control Center <ArrowRight size={13} className="group-hover:translate-x-0.5 transition duration-150" />
+            </button>
+            <button
+              onClick={() => setActiveTab("jobs")}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-xs font-semibold text-zinc-300 hover:text-white rounded-xl cursor-pointer transition select-none"
+            >
+              Browse Matches
+            </button>
           </div>
         </div>
 
-        {/* Card 4 */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-2xl text-indigo-400">
-            🔑
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Gemini API Key</span>
-            <div>
-              <span
-                className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded mt-1 ${
-                  isGeminiConfigured
-                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25"
-                    : "bg-rose-500/10 text-rose-400 border border-rose-500/25"
-                }`}
+        {/* Dynamic GPU-Accelerated 3D CSS Animation Container */}
+        <div className="w-56 h-56 flex-shrink-0 relative flex items-center justify-center select-none overflow-visible">
+          {/* perspective field */}
+          <div className="absolute inset-0 flex items-center justify-center" style={{ perspective: "600px" }}>
+            {/* rotating constellation */}
+            <div 
+              className="w-40 h-40 relative flex items-center justify-center"
+              style={{
+                transformStyle: "preserve-3d",
+                animation: "spinConstellation 20s linear infinite"
+              }}
+            >
+              {/* Orb Core */}
+              <div 
+                className="absolute w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_30px_#6366f1] flex items-center justify-center border border-white/20"
+                style={{ transform: "translateZ(0px)" }}
               >
-                {isGeminiConfigured ? "Configured" : "Missing"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+                <div className="w-4 h-4 rounded-full bg-white/20 animate-ping" />
+              </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_300px_1fr] gap-6">
-        {/* Left Action Panel */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col gap-5">
-          <div>
-            <h3 className="text-sm font-bold text-white">System Actions</h3>
-            <span className="text-[11px] text-zinc-500">Trigger application pipelines</span>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => triggerAction("test-graph")}
-              disabled={isScanning}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-800 hover:bg-zinc-700/85 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer border border-zinc-700 transition"
-            >
-              <Play size={14} className="text-zinc-400" />
-              Run Mock Graph Validation
-            </button>
-            <button
-              onClick={() => triggerAction("bump-naukri")}
-              disabled={isScanning}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-[0_0_15px_rgba(99,102,241,0.35)] hover:shadow-[0_0_25px_rgba(99,102,241,0.5)] transition"
-            >
-              <Zap size={14} />
-              Bump Naukri Visibility
-            </button>
-          </div>
-
-          <div className="mt-4 border-t border-zinc-850 pt-4 flex-1">
-            <h4 className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-3">
-              Engine Status Checklist
-            </h4>
-            <ul className="flex flex-col gap-3">
-              <li className="flex items-center gap-2.5 text-xs text-zinc-400">
-                {isResumeConfigured ? (
-                  <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                ) : (
-                  <XCircle size={14} className="text-zinc-650 flex-shrink-0" />
-                )}
-                <span className={isResumeConfigured ? "text-zinc-200" : ""}>
-                  Resume PDF path configured
-                </span>
-              </li>
-              <li className="flex items-center gap-2.5 text-xs text-zinc-400">
-                {isNaukriConfigured ? (
-                  <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                ) : (
-                  <XCircle size={14} className="text-zinc-650 flex-shrink-0" />
-                )}
-                <span className={isNaukriConfigured ? "text-zinc-200" : ""}>Naukri login setup</span>
-              </li>
-              <li className="flex items-center gap-2.5 text-xs text-zinc-400">
-                {isGeminiConfigured ? (
-                  <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                ) : (
-                  <XCircle size={14} className="text-zinc-650 flex-shrink-0" />
-                )}
-                <span className={isGeminiConfigured ? "text-zinc-200" : ""}>Gemini API configured</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Middle Visual Form Simulator Sandbox */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col gap-4">
-          <div>
-            <h3 className="text-sm font-bold text-white">Visual Form Simulator</h3>
-            <span className="text-[11px] text-zinc-500">Real-time simulation of form fill actions</span>
-          </div>
-
-          <div className="flex-1 flex flex-col gap-4 bg-zinc-950 p-4 border border-zinc-850 rounded-xl max-h-[300px] overflow-y-auto">
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">First Name</label>
-              <input
-                type="text"
-                readOnly
-                value={simFields.firstName}
-                placeholder={simFields.firstName ? "" : "Waiting..."}
-                className={`w-full bg-zinc-900/30 border text-xs px-3 py-2 rounded-lg outline-none transition duration-350 ${
-                  simFields.firstName
-                    ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                    : "border-zinc-800 text-zinc-500"
-                }`}
+              {/* Rings */}
+              <div 
+                className="absolute w-24 h-24 rounded-full border border-indigo-500/25 flex items-center justify-center"
+                style={{ transform: "rotateX(75deg) translateZ(0px)", transformStyle: "preserve-3d" }}
+              >
+                <div className="w-20 h-20 rounded-full border border-dashed border-purple-500/35 animate-spin" />
+              </div>
+              <div 
+                className="absolute w-36 h-36 rounded-full border border-purple-500/20"
+                style={{ transform: "rotateY(75deg) rotateX(15deg) translateZ(0px)" }}
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Last Name</label>
-              <input
-                type="text"
-                readOnly
-                value={simFields.lastName}
-                placeholder={simFields.lastName ? "" : "Waiting..."}
-                className={`w-full bg-zinc-900/30 border text-xs px-3 py-2 rounded-lg outline-none transition duration-350 ${
-                  simFields.lastName
-                    ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                    : "border-zinc-800 text-zinc-500"
-                }`}
+              <div 
+                className="absolute w-40 h-40 rounded-full border border-zinc-850"
+                style={{ transform: "rotateX(30deg) rotateY(-45deg) translateZ(0px)" }}
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Email Address</label>
-              <input
-                type="text"
-                readOnly
-                value={simFields.email}
-                placeholder={simFields.email ? "" : "Waiting..."}
-                className={`w-full bg-zinc-900/30 border text-xs px-3 py-2 rounded-lg outline-none transition duration-350 ${
-                  simFields.email
-                    ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                    : "border-zinc-800 text-zinc-500"
-                }`}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Willing to Relocate?</label>
-              <input
-                type="text"
-                readOnly
-                value={simFields.relocate}
-                placeholder={simFields.relocate ? "" : "Waiting..."}
-                className={`w-full bg-zinc-900/30 border text-xs px-3 py-2 rounded-lg outline-none transition duration-350 ${
-                  simFields.relocate
-                    ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                    : "border-zinc-800 text-zinc-500"
-                }`}
-              />
-            </div>
-          </div>
-        </div>
 
-        {/* Right Terminal Console Logs */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl flex flex-col overflow-hidden min-h-[300px]">
-          <div className="bg-zinc-950 px-4 py-3 border-b border-zinc-850 flex justify-between items-center flex-shrink-0">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-zinc-500 tracking-wider ml-2.5">
-                <Terminal size={12} />
-                Output Terminal
+              {/* Nodes orbiting in 3D */}
+              <div 
+                className="absolute w-4 h-4 rounded-lg bg-zinc-900 border border-indigo-400/50 flex items-center justify-center text-[8px] font-bold shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                style={{ transform: "rotateY(0deg) translateZ(65deg) rotateY(0deg)" }}
+              >
+                AI
+              </div>
+              <div 
+                className="absolute w-4 h-4 rounded-full bg-zinc-900 border border-purple-400/50 flex items-center justify-center text-[7px] font-bold shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                style={{ transform: "rotateY(120deg) translateZ(65deg) rotateY(-120deg)" }}
+              >
+                PDF
+              </div>
+              <div 
+                className="absolute w-4 h-4 rounded-full bg-zinc-900 border border-emerald-400/50 flex items-center justify-center text-[7px] font-bold shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                style={{ transform: "rotateY(240deg) translateZ(65deg) rotateY(-240deg)" }}
+              >
+                API
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={copyLogs}
-                title="Copy Terminal Logs"
-                className="p-1 text-zinc-500 hover:text-white cursor-pointer transition"
-              >
-                <Copy size={14} />
-              </button>
-              <button
-                onClick={clearLogs}
-                title="Clear logs"
-                className="p-1 text-zinc-500 hover:text-white cursor-pointer transition"
-              >
-                <Trash2 size={14} />
-              </button>
+          </div>
+          {/* Subtle scanning lines */}
+          <div className="absolute w-full h-0.5 bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent top-1/4 animate-[pulse_2s_infinite] pointer-events-none" />
+          <div className="absolute w-full h-0.5 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent bottom-1/4 animate-[pulse_3s_infinite] pointer-events-none" />
+        </div>
+      </div>
+
+      {/* Animation CSS Rules Injector */}
+      <style>{`
+        @keyframes spinConstellation {
+          0% { transform: rotateX(60deg) rotateY(0deg) rotateZ(0deg); }
+          100% { transform: rotateX(60deg) rotateY(360deg) rotateZ(360deg); }
+        }
+      `}</style>
+
+      {/* Core Overview Statistics Gauges */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        
+        {/* Stat 1 */}
+        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between min-h-[110px] hover:border-zinc-700/50 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Discovered Jobs</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs">
+              <Briefcase size={13} />
             </div>
           </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-white tracking-tight">{totalScanned}</h3>
+            <p className="text-[10px] text-zinc-500 mt-1">Compatibilities evaluated progressively</p>
+          </div>
+        </div>
 
-          <div className="flex-1 bg-zinc-950 p-4 font-mono text-[11px] leading-relaxed overflow-y-auto max-h-[360px]">
-            {logs ? (
-              logs.split("\n").map((line, idx) => {
-                if (!line && idx === logs.split("\n").length - 1) return null;
-                let colorClass = "text-zinc-400";
-                if (line.includes("Error") || line.includes("FAILED") || line.toLowerCase().includes("[error]")) {
-                  colorClass = "text-rose-400";
-                } else if (
-                  line.includes("OK") ||
-                  line.includes("successfully") ||
-                  line.includes("finished") ||
-                  line.toLowerCase().includes("[success]")
-                ) {
-                  colorClass = "text-emerald-400";
-                } else if (line.startsWith("[System]")) {
-                  colorClass = "text-indigo-400";
-                }
-                return (
-                  <div key={idx} className={colorClass}>
-                    {line}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-zinc-650 italic">Waiting for process start...</div>
-            )}
-            <div ref={terminalEndRef} />
+        {/* Stat 2 */}
+        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between min-h-[110px] hover:border-zinc-700/50 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Completed Applies</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 text-xs">
+              <CheckCircle size={13} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-white tracking-tight">{appliedJobs}</h3>
+            <p className="text-[10px] text-zinc-500 mt-1">Submitted with customized credentials</p>
+          </div>
+        </div>
+
+        {/* Stat 3 */}
+        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between min-h-[110px] hover:border-zinc-700/50 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Resumes Tailored</span>
+            <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400 text-xs">
+              <FileText size={13} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-black text-white tracking-tight">{tailoredJobs}</h3>
+            <p className="text-[10px] text-zinc-500 mt-1">Optimized metadata PDFs generated</p>
+          </div>
+        </div>
+
+        {/* Stat 4 */}
+        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between min-h-[110px] hover:border-zinc-700/50 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Stealth Driver</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400 text-xs">
+              <Shield size={13} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-lg font-black text-white tracking-tight">Active (CDP)</h3>
+            <p className="text-[10px] text-zinc-500 mt-1">Anti-detection automation rules</p>
           </div>
         </div>
       </div>
+
+      {/* Services Grid & Onboarding Status Check */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Onboarding Checklist Card */}
+        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col gap-4 lg:col-span-1">
+          <div>
+            <h3 className="text-sm font-bold text-white">Setup & Onboarding</h3>
+            <p className="text-[11px] text-zinc-500 mt-0.5">Initialize credentials to run automation</p>
+          </div>
+
+          <div className="flex flex-col gap-2.5">
+            {/* Progress Bar */}
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-zinc-400 font-medium">Profile completeness</span>
+              <strong className="text-indigo-400 font-bold">{progressPercent}%</strong>
+            </div>
+            <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-850 p-0.5">
+              <div 
+                className="bg-gradient-to-r from-indigo-500 to-purple-600 h-full rounded-full transition-all duration-500" 
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            {/* Checklist List */}
+            <ul className="flex flex-col gap-2.5 mt-2">
+              {checklistItems.map((item, idx) => (
+                <li key={idx} className="flex items-center gap-2.5 text-xs">
+                  <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold text-[9px] ${
+                    item.complete ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" : "bg-zinc-850 text-zinc-650 border border-zinc-800"
+                  }`}>
+                    {item.complete ? "✓" : ""}
+                  </span>
+                  <span className={item.complete ? "text-zinc-350" : "text-zinc-550"}>{item.label}</span>
+                </li>
+              ))}
+            </ul>
+
+            {progressPercent < 100 && (
+              <button
+                onClick={() => setActiveTab("search")}
+                className="w-full mt-4 flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white rounded-lg cursor-pointer transition"
+              >
+                Configure Settings <Settings size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Services Showcase Cards */}
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* Card 1 */}
+          <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-5 flex flex-col gap-3 hover:border-zinc-700/50 hover:bg-zinc-900/40 transition duration-200">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-sm">
+              🔍
+            </div>
+            <div>
+              <h4 className="font-bold text-xs text-white">Autonomous Portal Scanning</h4>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+                Parallel crawlers scan portal feeds (like Naukri) progressively and filter matches based on your targeted position filters.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 2 */}
+          <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-5 flex flex-col gap-3 hover:border-zinc-700/50 hover:bg-zinc-900/40 transition duration-200">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-sm">
+              📄
+            </div>
+            <div>
+              <h4 className="font-bold text-xs text-white">LLM Context Customizer</h4>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+                Tailors resume keywords and profiles dynamically using Gemini, and applies cryptographic hash modifiers to ensure unique PDF prints.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3 */}
+          <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-5 flex flex-col gap-3 hover:border-zinc-700/50 hover:bg-zinc-900/40 transition duration-200">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-sm">
+              ⚡
+            </div>
+            <div>
+              <h4 className="font-bold text-xs text-white">Anti-Detection Browser Driver</h4>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+                Leverages hardened browser automation rules and solver API keys to bypass Cloudflare Turnstile and complete EEO forms cleanly.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4 */}
+          <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-5 flex flex-col gap-3 hover:border-zinc-700/50 hover:bg-zinc-900/40 transition duration-200">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-sm">
+              <HardDrive size={16} />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs text-white">Cloud Resume Vault</h4>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+                Automatically synchronizes custom-tailored PDFs into organized folders on Google Drive and offers direct email client triggers.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Launch Panel */}
+      <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-white">Quick Actions</h3>
+          <p className="text-[11px] text-zinc-500 mt-0.5">Jump directly to active modules</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <button
+            onClick={() => setActiveTab("jobs")}
+            className="flex items-center justify-between px-4 py-3 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-750 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition cursor-pointer select-none"
+          >
+            <span>Scan Portal Jobs</span>
+            <ArrowRight size={13} className="text-zinc-500" />
+          </button>
+          <button
+            onClick={() => setActiveTab("resume-hub")}
+            className="flex items-center justify-between px-4 py-3 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-750 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition cursor-pointer select-none"
+          >
+            <span>Resume tailoring & Audits</span>
+            <ArrowRight size={13} className="text-zinc-500" />
+          </button>
+          <button
+            onClick={() => setActiveTab("control-center")}
+            className="flex items-center justify-between px-4 py-3 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-750 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition cursor-pointer select-none"
+          >
+            <span>Naukri bump Visibility</span>
+            <ArrowRight size={13} className="text-zinc-500" />
+          </button>
+          <button
+            onClick={() => setActiveTab("errors")}
+            className="flex items-center justify-between px-4 py-3 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-750 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition cursor-pointer select-none"
+          >
+            <span>Review Runtime Logs</span>
+            <ArrowRight size={13} className="text-zinc-500" />
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 }
