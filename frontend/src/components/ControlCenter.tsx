@@ -66,14 +66,35 @@ export default function ControlCenter({
   const positions = config?.searches?.search_parameters?.positions || [];
   const locations = config?.searches?.search_parameters?.locations || [];
   const geminiKey = config?.constants?.GEMINI_API_KEY || "";
-  const naukriUser = config?.constants?.USERNAME || "";
-  const naukriPass = config?.constants?.PASSWORD || "";
   const resumePath = config?.constants?.RESUME_PATH || "";
 
   // Onboarding checklist
   const isResumeConfigured = !!resumePath && resumePath.endsWith(".pdf");
-  const isNaukriConfigured = !!naukriUser && !!naukriPass && naukriUser !== "candidate_auth@domain.local";
   const isGeminiConfigured = !!geminiKey;
+
+  const portalsList = [
+    { id: "LINKEDIN", label: "LinkedIn" },
+    { id: "INSTAHYRE", label: "Instahyre" },
+    { id: "CUTSHORT", label: "Cutshort" },
+    { id: "WELLFOUND", label: "Wellfound" },
+    { id: "HIRIST", label: "Hirist" },
+    { id: "NAUKRI", label: "Naukri" },
+    { id: "INDEED", label: "Indeed" },
+    { id: "FOUNDIT", label: "Foundit" },
+    { id: "SHINE", label: "Shine" },
+    { id: "TIMESJOBS", label: "TimesJobs" },
+    { id: "GLASSDOOR", label: "Glassdoor" }
+  ];
+
+  const configuredPortals = portalsList.filter(portal => {
+    const isNaukri = portal.id === "NAUKRI";
+    const consts = config?.constants || {};
+    if (isNaukri) {
+      return !!consts.USERNAME && !!consts.PASSWORD && consts.USERNAME !== "candidate_auth@domain.local";
+    } else {
+      return !!consts[`${portal.id}_USERNAME`] && !!consts[`${portal.id}_PASSWORD`];
+    }
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -180,14 +201,18 @@ export default function ControlCenter({
                   Resume PDF path configured
                 </span>
               </li>
-              <li className="flex items-center gap-2.5 text-xs text-zinc-400">
-                {isNaukriConfigured ? (
+              {configuredPortals.map(portal => (
+                <li key={portal.id} className="flex items-center gap-2.5 text-xs text-zinc-400">
                   <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
-                ) : (
+                  <span className="text-zinc-200">{portal.label} login setup</span>
+                </li>
+              ))}
+              {configuredPortals.length === 0 && (
+                <li className="flex items-center gap-2.5 text-xs text-zinc-450">
                   <XCircle size={14} className="text-zinc-650 flex-shrink-0" />
-                )}
-                <span className={isNaukriConfigured ? "text-zinc-200" : ""}>Naukri login setup</span>
-              </li>
+                  <span>No portals configured</span>
+                </li>
+              )}
               <li className="flex items-center gap-2.5 text-xs text-zinc-400">
                 {isGeminiConfigured ? (
                   <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
