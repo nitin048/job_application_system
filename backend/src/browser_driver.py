@@ -35,9 +35,25 @@ class SecureBrowserDriver:
         self.playwright = sync_playwright().start()
         
         if self.cdp_address:
-            # Connect to native external running profile debugger port
-            logger.info(f"Connecting to browser via CDP: {self.cdp_address}")
-            self.browser = self.playwright.chromium.connect_over_cdp(f"http://{self.cdp_address}")
+            cdp_target = self.cdp_address.strip()
+            # If only digits, treat as local port
+            if cdp_target.isdigit():
+                port = int(cdp_target)
+                if not (1 <= port <= 65535):
+                    raise ValueError(f"Invalid CDP port: '{cdp_target}' is out of range (must be 1-65535). Please correct this in Secrets & Keys.")
+                cdp_target = f"127.0.0.1:{port}"
+            else:
+                if ":" in cdp_target:
+                    host, port_str = cdp_target.rsplit(":", 1)
+                    if port_str.isdigit():
+                        port = int(port_str)
+                        if not (1 <= port <= 65535):
+                            raise ValueError(f"Invalid CDP port: '{port_str}' in '{cdp_target}' is out of range (must be 1-65535). Please correct this in Secrets & Keys.")
+                else:
+                    cdp_target = f"{cdp_target}:9222"
+
+            logger.info(f"Connecting to browser via CDP: {cdp_target}")
+            self.browser = self.playwright.chromium.connect_over_cdp(f"http://{cdp_target}")
             # Get existing context if active or default to new
             self.context = self.browser.contexts[0] if self.browser.contexts else self.browser.new_context()
         else:
@@ -89,6 +105,9 @@ class SecureBrowserDriver:
         if self.context and not self.cdp_address:
             self.save_state()
         if self.browser:
-            self.browser.close()
+            if self.cdp_address:
+                self.browser.disconnect()
+            else:
+                self.browser.close()
         if self.playwright:
             self.playwright.stop()
