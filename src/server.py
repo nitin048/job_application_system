@@ -28,6 +28,45 @@ from src.crypto_manager import encrypt_value, decrypt_value, is_encrypted
 
 app = FastAPI(title="Job Application System API")
 
+import traceback
+import time
+
+ERROR_LOG_PATH = ROOT_DIR / "data" / "runtime_errors.json"
+
+def log_runtime_error(category: str, message: str, details: str):
+    errors = []
+    if ERROR_LOG_PATH.exists():
+        try:
+            with open(ERROR_LOG_PATH, "r", encoding="utf-8") as f:
+                errors = json.load(f)
+        except Exception:
+            pass
+    errors.append({
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "category": category,
+        "message": message,
+        "details": details
+    })
+    if len(errors) > 100:
+        errors = errors[-100:]
+    try:
+        ERROR_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(errors, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to write error log: {e}")
+
+@app.exception_handler(Exception)
+def global_exception_handler(request, exc: Exception):
+    error_msg = str(exc)
+    tb = traceback.format_exc()
+    log_runtime_error("backend", error_msg, tb)
+    logger.exception(f"Unhandled Exception on request: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {error_msg}"}
+    )
+
 # Assets folder for user-uploaded files
 ASSETS_DIR = ROOT_DIR / "assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
@@ -79,6 +118,35 @@ def run_background_task(command: str):
     process.stdout.close()
     return_code = process.wait()
     log_buffer.append(f"\nExecution finished. Return code: {return_code}\n")
+
+class FrontendErrorRequest(BaseModel):
+    message: str
+    details: str
+
+@app.get("/api/errors")
+def get_errors():
+    errors = []
+    if ERROR_LOG_PATH.exists():
+        try:
+            with open(ERROR_LOG_PATH, "r", encoding="utf-8") as f:
+                errors = json.load(f)
+        except Exception:
+            pass
+    return {"errors": errors}
+
+@app.post("/api/errors/log")
+def log_frontend_error_endpoint(payload: FrontendErrorRequest):
+    log_runtime_error("frontend", payload.message, payload.details)
+    return {"status": "success"}
+
+@app.delete("/api/errors")
+def clear_errors():
+    if ERROR_LOG_PATH.exists():
+        try:
+            ERROR_LOG_PATH.unlink()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to clear error log: {e}")
+    return {"status": "success", "message": "Runtime error logs cleared."}
 
 @app.get("/api/config")
 def get_config():
@@ -1299,7 +1367,7 @@ from src.resume_hub import (
 
 
 class JobCrawlRequest(BaseModel):
-    job_url: str
+    url: str
 
 class ResumeAnalyzeRequest(BaseModel):
     job_title: str
@@ -1359,6 +1427,17 @@ async def resume_hub_upload(file: UploadFile = File(...)):
     from config.constants import GEMINI_API_KEY
     structured = parse_and_structure_resume(raw_text, GEMINI_API_KEY)
     
+    # Save original structured JSON
+    try:
+        filename_stem = Path(file.filename).stem
+        filename_clean = _re.sub(r'[\W_]+', '_', filename_stem)
+        json_path = hub_original_dir / f"{filename_clean}.json"
+        with open(json_path, "w", encoding="utf-8") as f_json:
+            json.dump(structured, f_json, indent=2)
+        logger.info(f"Saved original structured JSON copy on disk: {json_path}")
+    except Exception as err:
+        logger.warning(f"Failed to save original structured JSON copy: {err}")
+    
     return {
         "filename": file.filename,
         "structured_data": structured,
@@ -1371,7 +1450,7 @@ def resume_hub_crawl(payload: JobCrawlRequest):
     Crawls a job board listing URL, reads the page content in background,
     and returns title, company, and job description variables.
     """
-    url = payload.job_url.strip()
+    url = payload.url.strip()
     if not is_valid_job_portal(url):
         raise HTTPException(status_code=400, detail="Please provide correct job portal url.")
         
@@ -1427,6 +1506,7 @@ def resume_hub_tailor(payload: ResumeTailorRequest):
     gemini_success = False
     if GEMINI_API_KEY:
         try:
+            import google.generativeai as genai
             genai.configure(api_key=GEMINI_API_KEY)
             model = genai.GenerativeModel("gemini-3.1-flash-lite")
             prompt = f"""
@@ -1608,7 +1688,30 @@ def resume_hub_get_tailored_data(path: str):
             raise HTTPException(status_code=500, detail=f"Failed to read tailored JSON data: {e}")
             
     raise HTTPException(status_code=404, detail="Tailored JSON data file not found.")
-
+ 
+@app.get("/api/resume-hub/original_data")
+def resume_hub_get_original_data(path: str):
+    """
+    Returns the original JSON data corresponding to the tailored PDF path.
+    """
+    pdf_path = Path(path)
+    # The tailored PDF filename is {filename_clean}_tailored.pdf
+    # So the original filename stem is pdf_path.name.replace("_tailored.pdf", "")
+    filename_clean = pdf_path.name.replace("_tailored.pdf", "")
+    
+    hub_original_dir = ROOT_DIR / "assets" / "resume_hub" / "original"
+    json_path = hub_original_dir / f"{filename_clean}.json"
+    
+    if json_path.exists() and json_path.is_file():
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read original JSON data: {e}")
+            
+    # Fallback to general original resume template if not found
+    from src.resume_tweaker import NITIN_RESUME_TEMPLATE
+    return NITIN_RESUME_TEMPLATE
 
 # Mount static folder
 static_dir = ROOT_DIR / "static"

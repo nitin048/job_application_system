@@ -204,20 +204,26 @@ def crawl_job_portal_details(job_url: str) -> dict:
         )
         page = context.new_page()
         try:
-            page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
-            page.wait_for_timeout(2000)
+            # Wait for load event instead of domcontentloaded
+            page.goto(job_url, wait_until="load", timeout=20000)
+            # Wait 4 seconds for JS rendering of Workday/Greenhouse/Lever pages
+            page.wait_for_timeout(4000)
             
             # 1. Extract job title
             title_selectors = [
+                "[data-automation-id='jobPostingHeader']", # Workday
+                "h2.job-title", "h1.job-title", "h2[data-automation-id='jobPostingHeader']",
                 "h1", "h1.jd-header-title", "h1[class*='title']", 
-                "main h1", ".styles_jd-header-title__aWbb2", ".job-title"
+                "main h1", "h2", ".styles_jd-header-title__aWbb2", ".job-title",
+                ".posting-header h2", ".app-title"
             ]
             for sel in title_selectors:
                 try:
                     el = page.locator(sel).first
                     if el and el.is_visible():
-                        result["title"] = el.inner_text().strip()
-                        if result["title"]:
+                        val = el.inner_text().strip()
+                        if val and val.lower() != "careers":
+                            result["title"] = val
                             break
                 except Exception:
                     continue
@@ -225,24 +231,41 @@ def crawl_job_portal_details(job_url: str) -> dict:
             # 2. Extract company name
             company_selectors = [
                 "a.comp-name", "div.companyName", "div[class*='company'] a", 
-                "a[class*='company']", ".styles_jd-header-comp-name__MvqAI", ".company-name"
+                "a[class*='company']", ".styles_jd-header-comp-name__MvqAI", ".company-name",
+                "[data-automation-id='companyName']", ".header-company-name"
             ]
             for sel in company_selectors:
                 try:
                     el = page.locator(sel).first
                     if el and el.is_visible():
-                        result["company"] = el.inner_text().strip()
-                        # Clean any reviews text e.g. "Google 4.5"
-                        result["company"] = re.sub(r'\s*\d+\.\d+\s*Reviews?.*', '', result["company"], flags=re.IGNORECASE).strip()
-                        if result["company"]:
+                        c_name = el.inner_text().strip()
+                        # Clean reviews
+                        c_name = re.sub(r'\s*\d+\.\d+\s*Reviews?.*', '', c_name, flags=re.IGNORECASE).strip()
+                        if c_name and c_name.lower() not in ["careers", "target employer"]:
+                            result["company"] = c_name
                             break
                 except Exception:
                     continue
             
+            # Fallback to URL parsing for company name
+            if not result["company"] or result["company"].lower() in ["target employer", "careers"]:
+                from urllib.parse import urlparse
+                domain = urlparse(job_url).netloc
+                parts = domain.split(".")
+                if len(parts) > 1:
+                    # e.g. autodesk.wd1.myworkdayjobs.com -> autodesk
+                    if parts[0] == "www" and len(parts) > 2:
+                        comp_name = parts[1]
+                    else:
+                        comp_name = parts[0]
+                    result["company"] = comp_name.replace("-", " ").capitalize()
+
             # 3. Extract description
             desc_selectors = [
+                "[data-automation-id='jobPostingDescription']", # Workday
                 "section.job-desc", "div.job-desc", "div[class*='job-desc']", 
-                "div[class*='JdContainer']", ".jd-description", "div.clearBoth"
+                "div[class*='JdContainer']", ".jd-description", "div.clearBoth",
+                "#content", ".section.page-centered", ".posting-page", ".job-description"
             ]
             desc_text = ""
             for sel in desc_selectors:
@@ -262,7 +285,7 @@ def crawl_job_portal_details(job_url: str) -> dict:
             result["description"] = re.sub(r'\n{3,}', '\n\n', desc_text)
             
             # Set defaults if empty
-            if not result["title"]:
+            if not result["title"] or result["title"].lower() == "careers":
                 result["title"] = "Scraped Opportunity"
             if not result["company"]:
                 result["company"] = "Target Employer"
@@ -499,7 +522,12 @@ def generate_ats_friendly_pdf(data: dict, out_path: str):
     if data.get("title"):
         story.append(Paragraph(data.get("title"), style_title))
         story.append(Spacer(1, 4))
-    story.append(Paragraph(data.get("contact", ""), style_contact))
+    contact_val = data.get("contact", "")
+    if isinstance(contact_val, dict):
+        contact_str = " | ".join(str(v) for v in contact_val.values() if v)
+    else:
+        contact_str = str(contact_val)
+    story.append(Paragraph(contact_str, style_contact))
     story.append(Spacer(1, 6))
     
     # 2. Loop through all sections dynamically to keep original visual structure
