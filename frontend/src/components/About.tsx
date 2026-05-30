@@ -78,7 +78,7 @@ export default function About() {
                 <img
                   src="/avatar.jpg"
                   alt="Nitin Pradhan Avatar"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover object-[center_28%]"
                 />
               </div>
               <div>
