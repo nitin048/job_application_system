@@ -6,13 +6,15 @@ interface DashboardProps {
   config: any;
   setActiveTab: (tab: string) => void;
   isScanning: boolean;
+  user?: any;
 }
 
 export default function Dashboard({
   jobs,
   config,
   setActiveTab,
-  isScanning
+  isScanning,
+  user
 }: DashboardProps) {
   // Safe checks for metrics
   const positions = config?.searches?.search_parameters?.positions || [];
@@ -45,6 +47,14 @@ export default function Dashboard({
   const appliedJobs = jobs.filter(j => j.applied).length;
   const tailoredJobs = jobs.filter(j => j.tailored_file_path || j.gdrive_file_id || j.applied).length;
 
+  const getGreeting = () => {
+    const hrs = new Date().getHours();
+    const name = user ? user.fullName.split(" ")[0] : "Candidate";
+    if (hrs < 12) return `Good morning, ${name}!`;
+    if (hrs < 18) return `Good afternoon, ${name}!`;
+    return `Good evening, ${name}!`;
+  };
+
   return (
     <div className="flex flex-col gap-8 pb-10">
       
@@ -55,7 +65,7 @@ export default function Dashboard({
             <Activity size={10} className="animate-pulse" /> Autonomous AI Job Assistant
           </div>
           <h2 className="text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight font-display">
-            Aegis Flow: Accelerate Your Career Search
+            {getGreeting()}
           </h2>
           <p className="text-zinc-400 text-xs leading-relaxed">
             An autonomous multi-threaded agent suite designed to scan global job portals, contextually tailor resumes utilizing LLM inference, bypass security CAPTCHAs, and automate application form fills cleanly.

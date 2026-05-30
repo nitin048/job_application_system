@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Menu,
   X,
-  Info
+  Info,
+  LogOut
 } from "lucide-react";
 
 interface SidebarProps {
@@ -24,6 +25,8 @@ interface SidebarProps {
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
   isScanning: boolean;
+  user?: any;
+  onLogout?: () => void;
 }
 
 export default function Sidebar({
@@ -33,7 +36,9 @@ export default function Sidebar({
   setCollapsed,
   mobileOpen,
   setMobileOpen,
-  isScanning
+  isScanning,
+  user,
+  onLogout
 }: SidebarProps) {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
@@ -120,8 +125,61 @@ export default function Sidebar({
           })}
         </nav>
 
+        {/* User Account / Profile Section */}
+        {user && (
+          <div className="mt-auto pt-4 border-t border-zinc-800/80 mb-2">
+            <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : "px-2 justify-between"}`}>
+              <button
+                onClick={() => setActiveTab("profile")}
+                className="flex items-center gap-3 text-left focus:outline-none group cursor-pointer"
+                title="Account Settings"
+              >
+                {user.avatarImage ? (
+                  <img
+                    src={user.avatarImage}
+                    alt={user.fullName}
+                    className="w-8 h-8 rounded-lg object-cover border border-white/10 group-hover:scale-105 transition"
+                  />
+                ) : (
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${user.avatarColor || "from-indigo-500 to-purple-600"} flex items-center justify-center text-white text-xs font-black border border-white/10 group-hover:scale-105 transition`}>
+                    {user.fullName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()}
+                  </div>
+                )}
+                {!collapsed && (
+                  <div className="overflow-hidden whitespace-nowrap max-w-[120px]">
+                    <p className="text-xs font-bold text-white truncate leading-none">{user.fullName}</p>
+                    <p className="text-[9.5px] text-zinc-550 truncate mt-1">View profile</p>
+                  </div>
+                )}
+              </button>
+              
+              {!collapsed && onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-455 hover:bg-rose-500/5 transition cursor-pointer"
+                  title="Logout"
+                >
+                  <LogOut size={15} />
+                </button>
+              )}
+            </div>
+            
+            {collapsed && onLogout && (
+              <div className="flex justify-center mt-2.5">
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 rounded-lg text-zinc-550 hover:text-rose-455 hover:bg-rose-500/5 transition cursor-pointer"
+                  title="Logout"
+                >
+                  <LogOut size={15} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="pt-4 border-t border-zinc-800/80 mt-auto">
+        <div className={`pt-2 ${!user ? "mt-auto border-t border-zinc-800/80" : ""}`}>
           <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : "px-2"}`}>
             <span
               className={`w-2.5 h-2.5 rounded-full ${
@@ -129,7 +187,7 @@ export default function Sidebar({
               }`}
             />
             {!collapsed && (
-              <span className="text-xs text-zinc-400 font-medium">
+              <span className="text-[10.5px] text-zinc-500 font-semibold">
                 {isScanning ? "Job Scan Running" : "Server Connected"}
               </span>
             )}

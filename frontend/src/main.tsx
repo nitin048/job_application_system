@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 
+import { AuthProvider } from './contexts/AuthContext'
+
 // Monkey-patch window.fetch to globally attach X-Session-Config header containing sessionStorage configuration
 const originalFetch = window.fetch;
 window.fetch = async function (input, init) {
@@ -31,6 +33,8 @@ window.fetch = async function (input, init) {
 
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </StrictMode>,
 )
