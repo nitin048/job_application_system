@@ -20,21 +20,17 @@ export default function Dashboard({
   const positions = config?.searches?.search_parameters?.positions || [];
   const locations = config?.searches?.search_parameters?.locations || [];
   const geminiKey = config?.constants?.GEMINI_API_KEY || "";
-  const naukriUser = config?.constants?.USERNAME || "";
-  const naukriPass = config?.constants?.PASSWORD || "";
   const resumePath = config?.constants?.RESUME_PATH || "";
   const gdriveSync = config?.constants?.GDRIVE_SYNC_ENABLED || false;
 
   // Onboarding status calculations
   const isResumeConfigured = !!resumePath && resumePath.endsWith(".pdf");
-  const isNaukriConfigured = !!naukriUser && !!naukriPass && naukriUser !== "candidate_auth@domain.local";
   const isGeminiConfigured = !!geminiKey;
   const isGDriveConfigured = !!gdriveSync;
 
   const checklistItems = [
     { label: "Search scope configured", complete: positions.length > 0 && locations.length > 0 },
     { label: "Original resume PDF uploaded", complete: isResumeConfigured },
-    { label: "Naukri credentials setup", complete: isNaukriConfigured },
     { label: "Google Gemini API key bound", complete: isGeminiConfigured },
     { label: "Google Drive sync active", complete: isGDriveConfigured }
   ];
