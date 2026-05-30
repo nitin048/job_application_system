@@ -36,6 +36,7 @@ tox/
 .tox/
 
 # Virtual Environments
+backend/.venv/
 .venv/
 venv/
 ENV/
@@ -55,17 +56,18 @@ Thumbs.db
 *.log
 
 # Sensitive Application Data & Secrets (MUST NOT BE COMMITTED)
-data/.secret.key
-data/token.json
-data/session_state.json
-data/discovered_jobs.json
-data/screenshots/
-data/*.pdf
-data/*.json
+backend/data/.secret.key
+backend/data/token.json
+backend/data/session_state.json
+backend/data/discovered_jobs.json
+backend/data/screenshots/
+backend/data/*.pdf
+backend/data/*.json
+data/
 
 # Google OAuth Credentials & dotfiles
-config/credentials.json
-config/*.json
+backend/config/credentials.json
+backend/config/*.json
 .env
 *.env
 .env.*
@@ -81,11 +83,12 @@ secrets.yaml
 *.crt
 
 # Exclude generated tailored resumes and vault assets
-assets/**/*.pdf
-assets/**/*.json
-assets/resume_hub/
-assets/target_employer_resume/
-assets/*_resume/
+backend/assets/**/*.pdf
+backend/assets/**/*.json
+backend/assets/resume_hub/
+backend/assets/target_employer_resume/
+backend/assets/*_resume/
+assets/
 
 # Temporary / scratch files
 scratch/reconstructed_*
