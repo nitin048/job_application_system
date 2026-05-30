@@ -3,6 +3,7 @@ import { Menu, Save, RotateCcw, AlertTriangle, Loader2 } from "lucide-react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
+import ControlCenter from "./components/ControlCenter";
 import DiscoveredJobs from "./components/DiscoveredJobs";
 import ResumeHub from "./components/ResumeHub";
 import SearchFilters from "./components/SearchFilters";
@@ -259,7 +260,9 @@ export default function App() {
   const getPageMeta = () => {
     switch (activeTab) {
       case "dashboard":
-        return { title: "Control Center", desc: "Setup your job criteria, configure credentials, and run automated application simulations." };
+        return { title: "Dashboard", desc: "Overview of your job application pipeline, system setup progress, and core microservices." };
+      case "control-center":
+        return { title: "Control Center", desc: "Run background processes, trigger automated portal visibility bumps, and inspect live sandbox simulation logs." };
       case "jobs":
         return { title: "Discovered Jobs", desc: "View and filter compatibility-scored listings and trigger direct matches." };
       case "resume-hub":
@@ -379,6 +382,14 @@ export default function App() {
               <>
                 {activeTab === "dashboard" && (
                   <Dashboard
+                    jobs={jobs}
+                    config={config}
+                    setActiveTab={setActiveTab}
+                    isScanning={isScanning}
+                  />
+                )}
+                {activeTab === "control-center" && (
+                  <ControlCenter
                     config={config}
                     logs={logs}
                     setLogs={setLogs}
