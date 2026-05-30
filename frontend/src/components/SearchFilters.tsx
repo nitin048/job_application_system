@@ -202,7 +202,7 @@ export default function SearchFilters({
           </label>
         </div>
 
-        <div className="flex items-center gap-3 pt-2 md:pt-4">
+         <div className="flex items-center gap-3 pt-2 md:pt-4">
           <input
             type="checkbox"
             id="search-apply-once"
@@ -213,6 +213,70 @@ export default function SearchFilters({
           <label htmlFor="search-apply-once" className="text-xs text-zinc-350 cursor-pointer">
             Avoid duplicate company applications
           </label>
+        </div>
+
+        <div className="flex flex-col gap-2.5 md:col-span-2 border-t border-zinc-850 pt-4">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+            Target Portals & Platforms
+          </label>
+          <div className="flex flex-wrap gap-6 mt-1">
+            <div className="flex items-center gap-2.5">
+              <input
+                type="checkbox"
+                id="portal-naukri"
+                checked={sp.target_portals?.naukri !== false}
+                onChange={(e) =>
+                  updateSearchParameters("target_portals", {
+                    ...sp.target_portals,
+                    naukri: e.target.checked
+                  })
+                }
+                className="w-4 h-4 bg-zinc-950 border-zinc-850 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="portal-naukri" className="text-xs text-zinc-350 cursor-pointer">
+                Naukri
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <input
+                type="checkbox"
+                id="portal-linkedin"
+                checked={sp.target_portals?.linkedin !== false}
+                onChange={(e) =>
+                  updateSearchParameters("target_portals", {
+                    ...sp.target_portals,
+                    linkedin: e.target.checked
+                  })
+                }
+                className="w-4 h-4 bg-zinc-950 border-zinc-850 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="portal-linkedin" className="text-xs text-zinc-350 cursor-pointer">
+                LinkedIn
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <input
+                type="checkbox"
+                id="portal-indeed"
+                checked={sp.target_portals?.indeed !== false}
+                onChange={(e) =>
+                  updateSearchParameters("target_portals", {
+                    ...sp.target_portals,
+                    indeed: e.target.checked
+                  })
+                }
+                className="w-4 h-4 bg-zinc-950 border-zinc-850 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="portal-indeed" className="text-xs text-zinc-350 cursor-pointer">
+                Indeed
+              </label>
+            </div>
+          </div>
+          <small className="text-[10px] text-zinc-650">
+            Select the platforms to scan in parallel when running job discovery checks.
+          </small>
         </div>
 
         <div className="flex flex-col gap-1.5 md:col-span-2">
