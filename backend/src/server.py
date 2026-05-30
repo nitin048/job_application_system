@@ -20,7 +20,7 @@ logger = logging.getLogger("src.server")
 ROOT_DIR = Path(__file__).parent.parent
 sys.path.append(str(ROOT_DIR))
 
-from src.config_loader import load_config
+from src.config_loader import load_config, JobAppConfig
 from src.job_crawler import JobCrawler
 from src.resume_tweaker import ResumeTweaker
 from src.gdrive_manager import GoogleDriveManager
