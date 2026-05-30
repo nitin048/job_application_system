@@ -49,8 +49,9 @@ An autonomous, end-to-end job board search, ingestion, compatibility scoring, an
 
 ## 📐 Subsystem Architecture & Components
 
-The application is structured as an event-driven system with a FastAPI web API server powering a local SPA dashboard, coupled with a stateful command-line interface for individual jobs.
+The application is structured as a decoupled architecture containing a modern React SPA client communicating over a JSON REST API with a FastAPI Python backend, coupled with a CLI interface for automation.
 
+### System Workflow Diagram
 ```mermaid
 graph TD
     A[Dashboard UI / static html] -->|Configure / Scan / Apply| B[FastAPI Web Server]
@@ -72,6 +73,24 @@ graph TD
     N -->|Inject Antidetect| O[Playwright Headed Browser]
     O -->|Easy Apply| P[Auto-submit Form]
     O -->|Manual Apply| Q[Pause Browser for User Review]
+```
+
+### Folder Architecture & File Layout
+```mermaid
+graph TD
+    Root[Project Root] --> Frontend[frontend/]
+    Root --> Backend[backend/]
+    
+    Frontend --> F_Src[src/ React Components]
+    Frontend --> F_E2E[e2e/ Playwright Spec Tests]
+    Frontend --> F_Config[vite.config.js & configs]
+    
+    Backend --> B_Src[src/ FastAPI Core App]
+    Backend --> B_Tests[tests/ Unit Tests]
+    Backend --> B_Config[config/ YAML & secrets templates]
+    Backend --> B_Data[data/ runtime_errors.json & logs]
+    Backend --> B_Assets[assets/ original & tailored resume vaults]
+    Backend --> B_Static[static/ compiled frontend assets]
 ```
 
 ### 1. Main Entry Point ([backend/main.py](file:///Users/nitinpradhan/Learning/job_application_system/backend/main.py))
@@ -150,24 +169,32 @@ The backend web server exposes the following endpoints for the frontend dashboar
 
 ## 💻 Technology Stack
 
-### Backend Core
-* **Language**: Python 3.11+
-* **Framework**: FastAPI (REST endpoints, static file mounting, background tasks)
-* **Web Scraping**: Playwright, BeautifulSoup4
-* **PDF Compile & Parse**: ReportLab Flowables, PyPDF
-* **AI/LLM Integration**: Google GenAI SDK (Gemini API client)
-* **Storage**: JSON Flat File DB (`data/discovered_jobs.json`), Local Assets File vault
-* **Security**: Cryptography (Fernet-encrypted SMTP settings)
+### Backend Core & Libraries
+* **Language & Runtime**: Python 3.11+
+* **Web Framework**: FastAPI (REST endpoints, static file mounting, background tasks)
+* **ASGI Server**: Uvicorn (dev server execution)
+* **Automation & Scraping**: 
+  * Playwright Python (headless browser control, stealth page actions)
+  * BeautifulSoup4 & Lxml (HTML extraction, job post DOM parsing)
+* **PDF Processing**: 
+  * ReportLab (flowables and canvas layout compilation)
+  * PyPDF (metadata editing, cryptographic hash scrambling, page reading)
+* **Generative AI**: Google GenAI Deprecated Dep (via `google-generativeai` client for Gemini APIs)
+* **Data Serialization**: Pydantic v2 (payload and request schemas), PyYAML (searches config parser)
+* **Security & Cryptography**: Cryptography (`cryptography.fernet` symmetric encryption)
+* **Other Utilities**: python-multipart (file upload parsing), email-validator (SMTP inputs check)
+* **Google Drive Sync**: google-api-python-client, google-auth-oauthlib, google-auth-httplib2 (Drive API integrations)
 
 ### Frontend Dashboard
-* **Framework**: React 19 (Component-based architecture, state management hooks, side effects)
-* **Build Tool**: Vite 8+
-* **Styling**: Tailwind CSS v4.0 (Utility-first CSS, custom variables, responsive design)
+* **Library**: React 19 (Hooks, functional component architecture, state management)
+* **Bundler & Build Server**: Vite 8+
+* **Styling**: Tailwind CSS v4.0 (Utility classes, customized variable themes)
 * **Language**: TypeScript 6+
-* **Autocomplete Integrations**: 
-  * *StackExchange API* (skills suggestion)
-  * *Clearbit Autocomplete API* (company names)
-  * *Wikidata Entity Search API* (blacklist titles)
+* **Icons**: Lucide React
+* **Autocomplete & Search Integrations**: 
+  * *StackExchange API* (skills auto-suggestion)
+  * *Clearbit Autocomplete API* (company logo icon autocomplete)
+  * *Wikidata Entity Search API* (title validation)
 
 ---
 
